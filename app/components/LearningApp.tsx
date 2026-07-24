@@ -44,9 +44,9 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 const defaultMastery: Record<TrackId, number> = {
-  csharp: 18,
-  java: 5,
-  sql: 8,
+  csharp: 0,
+  java: 0,
+  sql: 0,
   efcore: 0,
   mvc: 0,
   ajax: 0,
@@ -54,8 +54,8 @@ const defaultMastery: Record<TrackId, number> = {
 };
 
 const initialProgress: ProgressState = {
-  xp: 120,
-  streak: 1,
+  xp: 0,
+  streak: 0,
   lastStudyDate: "",
   completedLessons: [],
   completedExercises: [],
@@ -163,6 +163,90 @@ function percentage(value: number, total: number) {
   return total === 0 ? 0 : Math.round((value / total) * 100);
 }
 
+function calculateMastery(
+  completedLessons: string[],
+  completedExercises: string[],
+  practicedInterviews: string[],
+): Record<TrackId, number> {
+  return Object.fromEntries(
+    tracks.map((track) => {
+      const trackLessons = lessons.filter((lesson) => lesson.track === track.id);
+      const trackExercises = exercises.filter(
+        (exercise) => exercise.track === track.id,
+      );
+      const trackInterviews = interviewQuestions.filter(
+        (question) => question.track === track.id,
+      );
+      const availableEvidence =
+        trackLessons.length * 25 +
+        trackExercises.length * 40 +
+        trackInterviews.length * 15;
+      const demonstratedEvidence =
+        trackLessons.filter((lesson) => completedLessons.includes(lesson.id))
+          .length *
+          25 +
+        trackExercises.filter((exercise) =>
+          completedExercises.includes(exercise.id),
+        ).length *
+          40 +
+        trackInterviews.filter((question) =>
+          practicedInterviews.includes(question.id),
+        ).length *
+          15;
+
+      return [
+        track.id,
+        percentage(demonstratedEvidence, availableEvidence),
+      ];
+    }),
+  ) as Record<TrackId, number>;
+}
+
+function normalizeProgress(stored: ProgressState): ProgressState {
+  const completedLessons = stored.completedLessons.filter((id) =>
+    lessons.some((lesson) => lesson.id === id),
+  );
+  const completedExercises = stored.completedExercises.filter((id) =>
+    exercises.some((exercise) => exercise.id === id),
+  );
+  const practicedInterviews = (stored.practicedInterviews ?? []).filter((id) =>
+    interviewQuestions.some((question) => question.id === id),
+  );
+  const attempts = Object.fromEntries(
+    Object.entries(stored.attempts ?? {}).filter(
+      ([id, count]) =>
+        exercises.some((exercise) => exercise.id === id) &&
+        Number.isFinite(count) &&
+        count > 0,
+    ),
+  );
+  const hasStudyEvidence =
+    completedLessons.length +
+      completedExercises.length +
+      practicedInterviews.length >
+      0 || Object.keys(attempts).length > 0;
+
+  return {
+    ...initialProgress,
+    ...stored,
+    xp:
+      completedLessons.length * 25 +
+      completedExercises.length * 40 +
+      practicedInterviews.length * 15,
+    streak: hasStudyEvidence ? Math.max(1, stored.streak ?? 1) : 0,
+    completedLessons,
+    completedExercises,
+    practicedInterviews,
+    attempts,
+    mastery: calculateMastery(
+      completedLessons,
+      completedExercises,
+      practicedInterviews,
+    ),
+    recentActivity: stored.recentActivity ?? [],
+  };
+}
+
 function StatusPill({ saved }: { saved: boolean }) {
   return (
     <div className="save-status" aria-live="polite">
@@ -215,13 +299,18 @@ export function LearningApp() {
     interviewQuestions.find((question) => question.id === selectedInterviewId) ??
     interviewQuestions[0];
 
+  const demonstratedMilestones =
+    progress.completedLessons.length +
+    progress.completedExercises.length +
+    progress.practicedInterviews.length;
+
   const overallProgress = useMemo(
     () =>
       percentage(
-        progress.completedLessons.length + progress.completedExercises.length,
-        lessons.length + exercises.length,
+        demonstratedMilestones,
+        lessons.length + exercises.length + interviewQuestions.length,
       ),
-    [progress.completedExercises.length, progress.completedLessons.length],
+    [demonstratedMilestones],
   );
 
   const totalAttempts = useMemo(
@@ -234,11 +323,7 @@ export function LearningApp() {
     readSavedProgress()
       .then((stored) => {
         if (alive && stored && isProgressState(stored)) {
-          setProgress({
-            ...initialProgress,
-            ...stored,
-            mastery: { ...defaultMastery, ...stored.mastery },
-          });
+          setProgress(normalizeProgress(stored));
         }
       })
       .catch(() => {
@@ -280,37 +365,28 @@ export function LearningApp() {
     return () => window.clearTimeout(timer);
   }, [hydrated, progress]);
 
-  function addLearningProgress(
-    track: TrackId,
-    xp: number,
-    label: string,
-    detail: string,
-  ) {
+  function completeLesson(lessonId: string) {
+    const lesson = lessons.find((item) => item.id === lessonId);
+    if (!lesson) return;
     setProgress((current) => {
+      if (current.completedLessons.includes(lessonId)) return current;
+      const completedLessons = [...current.completedLessons, lessonId];
       const touched = withStudyTouch(current);
       return {
         ...touched,
-        xp: touched.xp + xp,
-        mastery: {
-          ...touched.mastery,
-          [track]: Math.min(100, (touched.mastery[track] ?? 0) + Math.max(2, xp / 5)),
-        },
+        xp: touched.xp + 25,
+        completedLessons,
+        mastery: calculateMastery(
+          completedLessons,
+          touched.completedExercises,
+          touched.practicedInterviews,
+        ),
         recentActivity: [
-          activity(label, detail),
+          activity("Lección completada", lesson.title),
           ...touched.recentActivity,
         ].slice(0, 8),
       };
     });
-  }
-
-  function completeLesson(lessonId: string) {
-    const lesson = lessons.find((item) => item.id === lessonId);
-    if (!lesson || progress.completedLessons.includes(lessonId)) return;
-    setProgress((current) => ({
-      ...current,
-      completedLessons: [...current.completedLessons, lessonId],
-    }));
-    addLearningProgress(lesson.track, 25, "Lección completada", lesson.title);
     setNotice(`Lección completada: +25 XP en ${trackById[lesson.track].name}.`);
   }
 
@@ -330,13 +406,42 @@ export function LearningApp() {
       (rule) => !new RegExp(rule.pattern, "i").test(code),
     );
 
-    setProgress((current) => ({
-      ...withStudyTouch(current),
-      attempts: {
-        ...current.attempts,
-        [activeExercise.id]: (current.attempts[activeExercise.id] ?? 0) + 1,
-      },
-    }));
+    setProgress((current) => {
+      const touched = withStudyTouch(current);
+      const attempted = {
+        ...touched,
+        attempts: {
+          ...touched.attempts,
+          [activeExercise.id]: (touched.attempts[activeExercise.id] ?? 0) + 1,
+        },
+      };
+
+      if (
+        failedRule ||
+        attempted.completedExercises.includes(activeExercise.id)
+      ) {
+        return attempted;
+      }
+
+      const completedExercises = [
+        ...attempted.completedExercises,
+        activeExercise.id,
+      ];
+      return {
+        ...attempted,
+        xp: attempted.xp + 40,
+        completedExercises,
+        mastery: calculateMastery(
+          attempted.completedLessons,
+          completedExercises,
+          attempted.practicedInterviews,
+        ),
+        recentActivity: [
+          activity("Reto resuelto", activeExercise.title),
+          ...attempted.recentActivity,
+        ].slice(0, 8),
+      };
+    });
 
     if (failedRule) {
       setFeedback({
@@ -353,18 +458,6 @@ export function LearningApp() {
       message: activeExercise.success,
     });
 
-    if (!progress.completedExercises.includes(activeExercise.id)) {
-      setProgress((current) => ({
-        ...current,
-        completedExercises: [...current.completedExercises, activeExercise.id],
-      }));
-      addLearningProgress(
-        activeExercise.track,
-        40,
-        "Reto resuelto",
-        activeExercise.title,
-      );
-    }
   }
 
   function nextHint() {
@@ -374,26 +467,37 @@ export function LearningApp() {
   }
 
   function markInterviewPracticed() {
-    if (progress.practicedInterviews.includes(selectedInterview.id)) return;
-    setProgress((current) => ({
-      ...withStudyTouch(current),
-      xp: current.xp + 15,
-      practicedInterviews: [
-        ...current.practicedInterviews,
+    setProgress((current) => {
+      if (current.practicedInterviews.includes(selectedInterview.id)) {
+        return current;
+      }
+      const touched = withStudyTouch(current);
+      const practicedInterviews = [
+        ...touched.practicedInterviews,
         selectedInterview.id,
-      ],
-      recentActivity: [
-        activity("Entrevista practicada", selectedInterview.title),
-        ...current.recentActivity,
-      ].slice(0, 8),
-    }));
+      ];
+      return {
+        ...touched,
+        xp: touched.xp + 15,
+        practicedInterviews,
+        mastery: calculateMastery(
+          touched.completedLessons,
+          touched.completedExercises,
+          practicedInterviews,
+        ),
+        recentActivity: [
+          activity("Entrevista practicada", selectedInterview.title),
+          ...touched.recentActivity,
+        ].slice(0, 8),
+      };
+    });
     setNotice("Práctica registrada: +15 XP.");
   }
 
   async function requestInstall() {
     if (!installPrompt) {
       setNotice(
-        "En computadora abre el menú del navegador y elige “Instalar RutaStack”. En iPhone usa Compartir › Añadir a pantalla de inicio.",
+        "En computadora abre el menú del navegador y elige “Instalar UP Training Center”. En iPhone usa Compartir › Añadir a pantalla de inicio.",
       );
       return;
     }
@@ -401,7 +505,7 @@ export function LearningApp() {
     const choice = await installPrompt.userChoice;
     setNotice(
       choice.outcome === "accepted"
-        ? "RutaStack quedó lista para instalarse."
+        ? "UP Training Center quedó lista para instalarse."
         : "Puedes instalarla después desde el menú del navegador.",
     );
     setInstallPrompt(null);
@@ -409,8 +513,8 @@ export function LearningApp() {
 
   function exportProgress() {
     const payload = {
-      app: "RutaStack",
-      version: 1,
+      app: "UP Training Center",
+      version: 2,
       exportedAt: new Date().toISOString(),
       progress,
     };
@@ -420,7 +524,7 @@ export function LearningApp() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `rutastack-progreso-${isoDay()}.json`;
+    anchor.download = `up-training-center-progreso-${isoDay()}.json`;
     anchor.click();
     URL.revokeObjectURL(url);
     setNotice("Se descargó una copia de tu progreso.");
@@ -438,15 +542,13 @@ export function LearningApp() {
         if (!isProgressState(parsed.progress)) {
           throw new Error("invalid");
         }
-        setProgress({
-          ...initialProgress,
-          ...parsed.progress,
-          mastery: { ...defaultMastery, ...parsed.progress.mastery },
-        });
+        setProgress(normalizeProgress(parsed.progress));
         setNotice("Progreso restaurado correctamente.");
       })
       .catch(() => {
-        setNotice("Ese archivo no contiene una copia válida de RutaStack.");
+        setNotice(
+          "Ese archivo no contiene una copia válida de UP Training Center.",
+        );
       })
       .finally(() => {
         event.target.value = "";
@@ -943,7 +1045,12 @@ export function LearningApp() {
             <span>Dominio global</span>
             <strong>{overallProgress}%</strong>
             <div className="metric-progress"><span style={{ width: `${overallProgress}%` }} /></div>
-            <small>{progress.completedLessons.length + progress.completedExercises.length} hitos demostrados</small>
+            <small>
+              {demonstratedMilestones}{" "}
+              {demonstratedMilestones === 1
+                ? "hito demostrado"
+                : "hitos demostrados"}
+            </small>
           </article>
           <article className="metric-card">
             <span>Experiencia</span>
@@ -1027,8 +1134,8 @@ export function LearningApp() {
     <div className="app-shell">
       <aside className="sidebar">
         <button className="brand" onClick={() => setActiveView("today")} aria-label="Ir al inicio">
-          <span className="brand-mark"><i /><b>R</b></span>
-          <span><strong>Ruta</strong>Stack</span>
+          <span className="brand-mark"><i /><b>UP</b></span>
+          <span className="brand-name"><strong>UP</strong><small>Training Center</small></span>
         </button>
 
         <nav aria-label="Navegación principal">
@@ -1068,8 +1175,8 @@ export function LearningApp() {
       <main className="main-content">
         <header className="mobile-header">
           <button className="brand" onClick={() => setActiveView("today")}>
-            <span className="brand-mark"><i /><b>R</b></span>
-            <span><strong>Ruta</strong>Stack</span>
+            <span className="brand-mark"><i /><b>UP</b></span>
+            <span className="brand-name"><strong>UP</strong><small>Training Center</small></span>
           </button>
           <div><strong>{progress.xp} XP</strong><span>{progress.streak}🔥</span></div>
         </header>

@@ -1,4 +1,4 @@
-const CACHE_NAME = "rutastack-shell-v1";
+const CACHE_NAME = "up-training-center-shell-v2";
 const APP_SHELL = ["/", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {

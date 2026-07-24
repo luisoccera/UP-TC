@@ -18,16 +18,16 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     metadataBase: new URL(origin),
     title: {
-      default: "RutaStack — Aprende desarrollo con profundidad",
-      template: "%s · RutaStack",
+      default: "UP Training Center — Formación tecnológica profunda",
+      template: "%s · UP Training Center",
     },
     description:
       "Ruta de aprendizaje práctica para dominar C#, Java, SQL, Entity Framework Core, MVC, AJAX y microservicios.",
-    applicationName: "RutaStack",
+    applicationName: "UP Training Center",
     appleWebApp: {
       capable: true,
       statusBarStyle: "black-translucent",
-      title: "RutaStack",
+      title: "UP Training Center",
     },
     formatDetection: {
       telephone: false,
@@ -40,8 +40,8 @@ export async function generateMetadata(): Promise<Metadata> {
     openGraph: {
       type: "website",
       locale: "es_MX",
-      siteName: "RutaStack",
-      title: "RutaStack — Aprende. Practica. Explica.",
+      siteName: "UP Training Center",
+      title: "UP Training Center — Aprende. Practica. Explica.",
       description:
         "Domina desarrollo backend con práctica, retroalimentación e entrevistas técnicas.",
       images: [
@@ -49,13 +49,13 @@ export async function generateMetadata(): Promise<Metadata> {
           url: socialImage,
           width: 1728,
           height: 912,
-          alt: "RutaStack — Aprende. Practica. Explica.",
+          alt: "UP Training Center — Aprende. Practica. Explica.",
         },
       ],
     },
     twitter: {
       card: "summary_large_image",
-      title: "RutaStack — Aprende. Practica. Explica.",
+      title: "UP Training Center — Aprende. Practica. Explica.",
       description:
         "C#, Java, SQL y microservicios con una ruta práctica y profunda.",
       images: [socialImage],

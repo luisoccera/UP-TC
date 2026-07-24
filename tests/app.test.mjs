@@ -4,7 +4,7 @@ import test from "node:test";
 
 const root = new URL("../", import.meta.url);
 
-test("ships the RutaStack product instead of the starter preview", async () => {
+test("ships the UP Training Center product instead of the starter preview", async () => {
   const [page, layout, app, packageJson] = await Promise.all([
     readFile(new URL("app/page.tsx", root), "utf8"),
     readFile(new URL("app/layout.tsx", root), "utf8"),
@@ -13,14 +13,39 @@ test("ships the RutaStack product instead of the starter preview", async () => {
   ]);
 
   assert.match(page, /<LearningApp \/>/);
-  assert.match(layout, /RutaStack/);
+  assert.match(layout, /UP Training Center/);
   assert.match(layout, /lang="es"/);
   assert.match(app, /Laboratorio/);
   assert.match(app, /Entrevistas/);
+  assert.match(app, /UP Training Center/);
   assert.match(app, /indexedDB\.open/);
   assert.match(app, /Comprobar solución/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.doesNotMatch(page, /codex-preview|SkeletonPreview/);
+});
+
+test("starts progress at zero and derives mastery from demonstrated work", async () => {
+  const app = await readFile(
+    new URL("app/components/LearningApp.tsx", root),
+    "utf8",
+  );
+
+  assert.match(app, /const initialProgress:[\s\S]*?xp:\s*0/);
+  assert.match(app, /const initialProgress:[\s\S]*?streak:\s*0/);
+  assert.match(app, /csharp:\s*0/);
+  assert.match(app, /java:\s*0/);
+  assert.match(app, /sql:\s*0/);
+  assert.match(app, /function calculateMastery/);
+  assert.match(app, /function normalizeProgress/);
+  assert.doesNotMatch(app, /csharp:\s*18|xp:\s*120/);
+});
+
+test("keeps the compact interview card inside the mobile viewport", async () => {
+  const css = await readFile(new URL("app/globals.css", root), "utf8");
+  assert.match(
+    css,
+    /\.interview-strip\s*\{\s*grid-template-columns:\s*auto minmax\(0,\s*1fr\)/,
+  );
 });
 
 test("includes install and offline assets", async () => {

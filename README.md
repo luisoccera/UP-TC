@@ -1,6 +1,6 @@
-# RutaStack
+# UP Training Center
 
-RutaStack es una aplicación educativa instalable y local-first para aprender
+UP Training Center es una aplicación educativa instalable y local-first para aprender
 C#, Java, SQL, Entity Framework Core, ASP.NET MVC, AJAX y microservicios.
 
 La primera versión incluye:
