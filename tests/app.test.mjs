@@ -52,3 +52,38 @@ test("contains the requested learning domains and interview practice", async () 
   assert.match(data, /InterviewQuestion/);
   assert.match(data, /Outbox transaccional/);
 });
+
+test("keeps primary reading colors above WCAG AA contrast", async () => {
+  const css = await readFile(new URL("app/globals.css", root), "utf8");
+
+  function color(token) {
+    const match = css.match(new RegExp(`--${token}:\\s*(#[0-9a-f]{6})`, "i"));
+    assert.ok(match, `missing color token ${token}`);
+    return match[1];
+  }
+
+  function luminance(hex) {
+    const channels = hex
+      .slice(1)
+      .match(/.{2}/g)
+      .map((value) => parseInt(value, 16) / 255)
+      .map((value) =>
+        value <= 0.04045
+          ? value / 12.92
+          : Math.pow((value + 0.055) / 1.055, 2.4),
+      );
+    return (
+      0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+    );
+  }
+
+  function contrast(foreground, background) {
+    const first = luminance(foreground);
+    const second = luminance(background);
+    return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+  }
+
+  assert.ok(contrast(color("ink"), color("paper")) >= 7);
+  assert.ok(contrast(color("muted"), color("paper")) >= 4.5);
+  assert.ok(contrast(color("green"), color("lime")) >= 4.5);
+});

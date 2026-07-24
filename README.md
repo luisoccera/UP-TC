@@ -17,12 +17,17 @@ La primera versión incluye:
 
 Requiere Node.js 22.13 o posterior.
 
+En Windows, abre PowerShell y entra al proyecto:
+
 ```bash
+cd "C:\Users\luisg\OneDrive\Escritorio\Proyectos\RutaStack"
 pnpm install
 pnpm dev
 ```
 
-La app queda disponible en `http://localhost:3000`.
+La app queda disponible en [http://localhost:3000](http://localhost:3000).
+Deja abierta la terminal mientras haces pruebas. Para detenerla, presiona
+`Ctrl+C`.
 
 ## Validar
 
@@ -30,6 +35,7 @@ La app queda disponible en `http://localhost:3000`.
 pnpm build
 pnpm test
 pnpm lint
+pnpm exec tsc --noEmit
 ```
 
 ## Privacidad del progreso

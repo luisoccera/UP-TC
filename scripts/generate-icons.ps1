@@ -8,16 +8,16 @@ foreach ($size in @(192, 512)) {
   $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
   $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
   $graphics.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
-  $graphics.Clear([System.Drawing.ColorTranslator]::FromHtml("#153e2e"))
+  $graphics.Clear([System.Drawing.ColorTranslator]::FromHtml("#1c4736"))
 
   $limeBrush = [System.Drawing.SolidBrush]::new(
-    [System.Drawing.ColorTranslator]::FromHtml("#c7ee6c")
+    [System.Drawing.ColorTranslator]::FromHtml("#d6e58f")
   )
   $ivoryBrush = [System.Drawing.SolidBrush]::new(
     [System.Drawing.ColorTranslator]::FromHtml("#f3f0e8")
   )
   $darkPen = [System.Drawing.Pen]::new(
-    [System.Drawing.ColorTranslator]::FromHtml("#153e2e"),
+    [System.Drawing.ColorTranslator]::FromHtml("#1c4736"),
     [Math]::Max(4, [Math]::Round($size * 0.032))
   )
 
