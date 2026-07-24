@@ -5,10 +5,11 @@ import test from "node:test";
 const root = new URL("../", import.meta.url);
 
 test("ships the UP Training Center product instead of the starter preview", async () => {
-  const [page, layout, app, packageJson] = await Promise.all([
+  const [page, layout, app, storage, packageJson] = await Promise.all([
     readFile(new URL("app/page.tsx", root), "utf8"),
     readFile(new URL("app/layout.tsx", root), "utf8"),
     readFile(new URL("app/components/LearningApp.tsx", root), "utf8"),
+    readFile(new URL("app/localDatabase.ts", root), "utf8"),
     readFile(new URL("package.json", root), "utf8"),
   ]);
 
@@ -18,10 +19,51 @@ test("ships the UP Training Center product instead of the starter preview", asyn
   assert.match(app, /Laboratorio/);
   assert.match(app, /Entrevistas/);
   assert.match(app, /UP Training Center/);
-  assert.match(app, /indexedDB\.open/);
+  assert.match(storage, /indexedDB\.open/);
   assert.match(app, /Comprobar solución/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.doesNotMatch(page, /codex-preview|SkeletonPreview/);
+});
+
+test("registers local accounts with protected credentials and isolated progress", async () => {
+  const [auth, app, storage] = await Promise.all([
+    readFile(new URL("app/components/AuthGate.tsx", root), "utf8"),
+    readFile(new URL("app/components/LearningApp.tsx", root), "utf8"),
+    readFile(new URL("app/localDatabase.ts", root), "utf8"),
+  ]);
+
+  assert.match(auth, /type="email"/);
+  assert.match(auth, /autoComplete="username"/);
+  assert.match(auth, /type=\{showPassword \? "text" : "password"\}/);
+  assert.match(auth, /PBKDF2/);
+  assert.match(auth, /SHA-256/);
+  assert.match(auth, /210_000/);
+  assert.match(storage, /LOCAL_DATABASE_VERSION = 2/);
+  assert.match(storage, /createIndex\("email", "email", \{ unique: true \}\)/);
+  assert.match(storage, /createIndex\("username", "username", \{ unique: true \}\)/);
+  assert.match(app, /function progressKey\(userId: string\)/);
+  assert.doesNotMatch(app, /LEGACY_PROGRESS_KEY|store\.get\("current"\)/);
+});
+
+test("includes a portable Windows desktop package", async () => {
+  const [packageJson, desktopPackage, desktopConfig, desktopMain, desktopVite] = await Promise.all([
+    readFile(new URL("package.json", root), "utf8"),
+    readFile(new URL("desktop/package.json", root), "utf8"),
+    readFile(new URL("desktop/electron-builder.yml", root), "utf8"),
+    readFile(new URL("desktop/main.cjs", root), "utf8"),
+    readFile(new URL("vite.desktop.config.ts", root), "utf8"),
+  ]);
+
+  const packageConfig = JSON.parse(packageJson);
+  const desktopPackageConfig = JSON.parse(desktopPackage);
+  assert.equal(packageConfig.main, "desktop/main.cjs");
+  assert.equal(desktopPackageConfig.main, "main.cjs");
+  assert.match(desktopConfig, /productName: UP Training Center/);
+  assert.match(desktopConfig, /target: portable/);
+  assert.match(desktopMain, /BrowserWindow/);
+  assert.match(desktopMain, /contextIsolation:\s*true/);
+  assert.match(desktopMain, /nodeIntegration:\s*false/);
+  assert.match(desktopVite, /outDir:\s*"dist"/);
 });
 
 test("starts progress at zero and derives mastery from demonstrated work", async () => {

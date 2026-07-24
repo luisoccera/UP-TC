@@ -1,7 +1,10 @@
 {
   "name": "up-training-center",
   "version": "0.1.0",
+  "description": "Formación tecnológica local de UP Consultancy Services",
+  "author": "UP Consultancy Services",
   "private": true,
+  "main": "desktop/main.cjs",
   "packageManager": "pnpm@11.9.0",
   "engines": {
     "node": ">=22.13.0"
@@ -10,6 +13,9 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "vinext start",
+    "desktop:build": "vite build --config vite.desktop.config.ts",
+    "desktop:start": "pnpm desktop:build && electron .",
+    "desktop:dist": "pnpm desktop:build && electron-builder --projectDir desktop --win portable --x64",
     "test": "node --test tests/app.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
@@ -29,6 +35,8 @@
     "@vitejs/plugin-react": "6.0.2",
     "@vitejs/plugin-rsc": "0.5.26",
     "drizzle-kit": "0.31.10",
+    "electron": "43.2.0",
+    "electron-builder": "26.15.3",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
     "react-server-dom-webpack": "19.2.6",

@@ -3,6 +3,7 @@
 import {
   ChangeEvent,
   CSSProperties,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -17,6 +18,15 @@ import {
   type Exercise,
   type TrackId,
 } from "../data";
+import {
+  openLocalDatabase,
+  PROGRESS_STORE_NAME,
+} from "../localDatabase";
+import {
+  AuthGate,
+  clearLocalSession,
+  type SessionUser,
+} from "./AuthGate";
 
 type ViewId = "today" | "path" | "lab" | "interviews" | "progress";
 
@@ -73,45 +83,40 @@ const navigation: { id: ViewId; label: string; glyph: string }[] = [
   { id: "progress", label: "Progreso", glyph: "▥" },
 ];
 
-const DB_NAME = "rutastack-local";
-const STORE_NAME = "progress";
-const PROGRESS_KEY = "current";
-
-function openProgressDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-
-    request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains(STORE_NAME)) {
-        request.result.createObjectStore(STORE_NAME);
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
+function progressKey(userId: string) {
+  return `user:${userId}`;
 }
 
-async function readSavedProgress(): Promise<ProgressState | null> {
-  const database = await openProgressDatabase();
+async function readSavedProgress(userId: string): Promise<ProgressState | null> {
+  const database = await openLocalDatabase();
   return new Promise((resolve, reject) => {
-    const transaction = database.transaction(STORE_NAME, "readonly");
-    const request = transaction.objectStore(STORE_NAME).get(PROGRESS_KEY);
-    request.onsuccess = () => resolve((request.result as ProgressState) ?? null);
+    const transaction = database.transaction(PROGRESS_STORE_NAME, "readonly");
+    const store = transaction.objectStore(PROGRESS_STORE_NAME);
+    const request = store.get(progressKey(userId));
+    request.onsuccess = () =>
+      resolve((request.result as ProgressState) ?? null);
     request.onerror = () => reject(request.error);
     transaction.oncomplete = () => database.close();
   });
 }
 
-async function saveProgress(progress: ProgressState): Promise<void> {
-  const database = await openProgressDatabase();
+async function saveProgress(
+  progress: ProgressState,
+  userId: string,
+): Promise<void> {
+  const database = await openLocalDatabase();
   return new Promise((resolve, reject) => {
-    const transaction = database.transaction(STORE_NAME, "readwrite");
-    transaction.objectStore(STORE_NAME).put(progress, PROGRESS_KEY);
+    const transaction = database.transaction(PROGRESS_STORE_NAME, "readwrite");
+    const store = transaction.objectStore(PROGRESS_STORE_NAME);
+    store.put(progress, progressKey(userId));
     transaction.oncomplete = () => {
       database.close();
       resolve();
     };
-    transaction.onerror = () => reject(transaction.error);
+    transaction.onerror = () => {
+      database.close();
+      reject(transaction.error);
+    };
   });
 }
 
@@ -270,6 +275,7 @@ function TrackMark({ trackId }: { trackId: TrackId }) {
 }
 
 export function LearningApp() {
+  const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
   const [activeView, setActiveView] = useState<ViewId>("today");
   const [progress, setProgress] = useState<ProgressState>(initialProgress);
   const [hydrated, setHydrated] = useState(false);
@@ -318,9 +324,17 @@ export function LearningApp() {
     [progress.attempts],
   );
 
+  const authenticate = useCallback((user: SessionUser) => {
+    setHydrated(false);
+    setProgress(initialProgress);
+    setCurrentUser(user);
+  }, []);
+
   useEffect(() => {
+    if (!currentUser) return;
+
     let alive = true;
-    readSavedProgress()
+    readSavedProgress(currentUser.id)
       .then((stored) => {
         if (alive && stored && isProgressState(stored)) {
           setProgress(normalizeProgress(stored));
@@ -347,13 +361,13 @@ export function LearningApp() {
       alive = false;
       window.removeEventListener("beforeinstallprompt", onInstallReady);
     };
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !currentUser) return;
     const timer = window.setTimeout(() => {
       setSaved(false);
-      saveProgress(progress)
+      saveProgress(progress, currentUser.id)
         .then(() => setSaved(true))
         .catch(() => {
           setSaved(false);
@@ -363,7 +377,7 @@ export function LearningApp() {
         });
     }, 280);
     return () => window.clearTimeout(timer);
-  }, [hydrated, progress]);
+  }, [currentUser, hydrated, progress]);
 
   function completeLesson(lessonId: string) {
     const lesson = lessons.find((item) => item.id === lessonId);
@@ -495,6 +509,10 @@ export function LearningApp() {
   }
 
   async function requestInstall() {
+    if (navigator.userAgent.includes("Electron")) {
+      setNotice("Ya estás usando la versión instalada de UP Training Center.");
+      return;
+    }
     if (!installPrompt) {
       setNotice(
         "En computadora abre el menú del navegador y elige “Instalar UP Training Center”. En iPhone usa Compartir › Añadir a pantalla de inicio.",
@@ -509,6 +527,15 @@ export function LearningApp() {
         : "Puedes instalarla después desde el menú del navegador.",
     );
     setInstallPrompt(null);
+  }
+
+  function logout() {
+    clearLocalSession();
+    setHydrated(false);
+    setCurrentUser(null);
+    setProgress(initialProgress);
+    setActiveView("today");
+    setNotice("");
   }
 
   function exportProgress() {
@@ -1130,6 +1157,10 @@ export function LearningApp() {
     );
   }
 
+  if (!currentUser) {
+    return <AuthGate onAuthenticated={authenticate} />;
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -1156,6 +1187,19 @@ export function LearningApp() {
 
         <div className="sidebar-spacer" />
 
+        <div className="sidebar-user">
+          <span aria-hidden="true">
+            {currentUser.username.slice(0, 1).toUpperCase()}
+          </span>
+          <div>
+            <strong>{currentUser.username}</strong>
+            <small>{currentUser.email}</small>
+          </div>
+          <button type="button" onClick={logout} aria-label="Cerrar sesión">
+            Salir
+          </button>
+        </div>
+
         <div className="sidebar-progress">
           <div
             className="progress-ring"
@@ -1178,7 +1222,15 @@ export function LearningApp() {
             <span className="brand-mark"><i /><b>UP</b></span>
             <span className="brand-name"><strong>UP</strong><small>Training Center</small></span>
           </button>
-          <div><strong>{progress.xp} XP</strong><span>{progress.streak}🔥</span></div>
+          <button
+            className="mobile-account"
+            type="button"
+            onClick={logout}
+            aria-label={`Cerrar sesión de ${currentUser.username}`}
+          >
+            <span>{currentUser.username.slice(0, 1).toUpperCase()}</span>
+            <small>Salir</small>
+          </button>
         </header>
 
         {activeView === "today" && renderToday()}

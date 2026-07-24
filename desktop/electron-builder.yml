@@ -1,0 +1,20 @@
+appId: com.upconsultancy.trainingcenter
+productName: UP Training Center
+electronVersion: 43.2.0
+asar: true
+npmRebuild: false
+directories:
+  output: ../release
+  buildResources: .
+files:
+  - main.cjs
+  - icon.ico
+  - dist/**/*
+  - package.json
+win:
+  icon: icon.ico
+  target:
+    - target: portable
+      arch:
+        - x64
+  artifactName: UP Training Center.${ext}

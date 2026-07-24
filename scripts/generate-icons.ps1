@@ -3,12 +3,12 @@ Add-Type -AssemblyName System.Drawing
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
 $outputDirectory = Join-Path $workspaceRoot "public"
 
-foreach ($size in @(192, 512)) {
+foreach ($size in @(192, 256, 512)) {
   $bitmap = [System.Drawing.Bitmap]::new($size, $size)
   $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
   $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
   $graphics.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
-  $graphics.Clear([System.Drawing.ColorTranslator]::FromHtml("#8f1824"))
+  $graphics.Clear([System.Drawing.ColorTranslator]::FromHtml("#c40a18"))
 
   $ivoryBrush = [System.Drawing.SolidBrush]::new(
     [System.Drawing.ColorTranslator]::FromHtml("#fffdfa")

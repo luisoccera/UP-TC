@@ -1,0 +1,9 @@
+{
+  "name": "up-training-center",
+  "version": "0.1.0",
+  "description": "Formación tecnológica local de UP Consultancy Services",
+  "author": "UP Consultancy Services",
+  "private": true,
+  "packageManager": "traversal@1",
+  "main": "main.cjs"
+}
