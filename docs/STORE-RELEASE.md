@@ -1,6 +1,6 @@
 # Preparación para Windows, Google Play y App Store
 
-Los proyectos nativos ya usan el identificador:
+Los proyectos nativos usan el identificador:
 
 ```text
 com.upconsultancy.trainingcenter
@@ -11,13 +11,16 @@ permanente de la aplicación.
 
 ## Antes de generar paquetes
 
-1. Completa la configuración de `docs/CLOUD-SETUP.md`.
-2. Sustituye los campos pendientes de `docs/PRIVACY-POLICY-DRAFT.md`.
-3. Publica la política de privacidad en una URL de UP Consultancy Services.
-4. Publica la aplicación web y usa la ruta pública `/delete-account` como
-   recurso externo de eliminación en Play Console.
-5. Ejecuta pruebas de registro, sincronización, recuperación y eliminación.
-6. Conserva fuera del repositorio las claves de firma y sus contraseñas.
+1. Completa `docs/CLOUD-SETUP.md`, incluidas las plataformas de Appwrite.
+2. Publica la misma aplicación en una URL HTTPS pública y coloca esa dirección
+   en `VITE_APPWRITE_PUBLIC_URL`.
+3. Despliega y prueba la función Appwrite `delete-account`.
+4. Sustituye los campos pendientes de `docs/PRIVACY-POLICY-DRAFT.md`.
+5. Publica la política de privacidad en una URL de UP Consultancy Services.
+6. Usa la ruta pública `/delete-account` como recurso externo de eliminación
+   en Play Console.
+7. Prueba registro, verificación, sincronización, recuperación y eliminación.
+8. Conserva fuera del repositorio las claves de firma y sus contraseñas.
 
 ## Windows
 
@@ -31,9 +34,12 @@ Resultado:
 release\UP Training Center.exe
 ```
 
-Es un ejecutable portable para Windows x64. Para distribuir en Microsoft Store
-hará falta crear un paquete MSIX firmado; el portable sirve para pruebas
-directas en computadora.
+Es un ejecutable portable para Windows x64. Para Microsoft Store hará falta un
+paquete MSIX firmado; el portable sirve para pruebas directas.
+
+El ejecutable incorpora las variables `VITE_APPWRITE_*` al compilar. La URL
+pública es indispensable para que los enlaces de verificación y recuperación
+funcionen aunque el ejecutable use archivos locales.
 
 ## Android / Google Play
 
@@ -51,7 +57,7 @@ En Android Studio:
 2. prueba al menos Android 7/API 24 y una versión actual;
 3. usa **Build > Generate Signed Bundle / APK > Android App Bundle**;
 4. crea y respalda el upload key;
-5. sube el archivo `.aab` a una pista de prueba interna de Play Console;
+5. sube el `.aab` a una pista de prueba interna;
 6. completa Data safety, política de privacidad y la URL pública
    `https://TU_DOMINIO/delete-account`.
 
@@ -82,17 +88,18 @@ En Xcode:
 
 Apple exige que las apps con creación de cuentas permitan iniciar la
 eliminación dentro de la app. UP Training Center ya ofrece esa opción en
-**Progreso > Cuenta y privacidad**; debe probarse contra la Edge Function real
-antes de enviar la compilación.
+**Progreso > Cuenta y privacidad**; debe probarse contra la función Appwrite
+real antes de enviar la compilación.
 
 ## Web y PWA
 
-La misma interfaz puede publicarse como web/PWA. La publicación necesita las
-dos variables públicas de Supabase en el entorno de compilación. No publiques
-una compilación que muestre “Falta conectar el servicio central de cuentas”.
+La publicación necesita las variables públicas de Appwrite en el entorno de
+compilación. El dominio público debe registrarse como plataforma Web en
+Appwrite. No publiques una compilación que muestre “Falta conectar el servicio
+central de cuentas”.
 
 ## Estado de este equipo Windows
 
 El proyecto Android está generado, pero para compilar el `.aab` se necesita
-instalar Android Studio y el SDK. El proyecto iOS también está generado, pero
-Apple solo permite compilarlo y firmarlo desde macOS/Xcode.
+Android Studio y el SDK. El proyecto iOS también está generado, pero Apple solo
+permite compilarlo y firmarlo desde macOS/Xcode.

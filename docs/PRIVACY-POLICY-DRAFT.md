@@ -14,8 +14,9 @@ UP Training Center trata el correo electrónico, nombre de usuario, datos
 técnicos necesarios para mantener la sesión y el progreso de aprendizaje
 (lecciones, ejercicios, entrevistas, intentos, XP y racha).
 
-La aplicación conserva además una copia local del progreso y de la sesión en el
-dispositivo para mantener el acceso y permitir trabajo temporal sin conexión.
+La aplicación conserva además una copia local del progreso y los datos técnicos
+de sesión necesarios en el dispositivo para mantener el acceso y permitir
+trabajo temporal sin conexión.
 
 ## Finalidad
 
@@ -25,9 +26,10 @@ permitir al usuario continuar en varios dispositivos.
 
 ## Proveedores
 
-Supabase presta los servicios de autenticación, base de datos y funciones de
-servidor. [AGREGAR REGIÓN DEL PROYECTO, ENLACE A LA POLÍTICA DEL PROVEEDOR Y
-CUALQUIER OTRO PROVEEDOR REAL].
+Appwrite Cloud presta los servicios de autenticación, preferencias de cuenta y
+funciones de servidor desde el endpoint regional `sfo`. [CONFIRMAR LA UBICACIÓN
+LEGAL DE LA REGIÓN, AGREGAR EL ENLACE A LA POLÍTICA DE APPWRITE Y CUALQUIER
+OTRO PROVEEDOR REAL].
 
 ## Conservación y eliminación
 

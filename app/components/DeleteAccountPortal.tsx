@@ -4,9 +4,10 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { deleteCurrentAccount } from "../accountRepository";
 import {
+  account as appwriteAccount,
   cloudConfiguration,
-  requireSupabase,
-} from "../supabaseClient";
+  requireAccount,
+} from "../appwriteClient";
 
 type VerifiedAccount = {
   id: string;
@@ -33,31 +34,29 @@ export function DeleteAccountPortal() {
     setSubmitting(true);
     setMessage("");
     try {
-      const client = requireSupabase();
-      const { data, error } = await client.auth.signInWithPassword({
+      const client = requireAccount();
+      await appwriteAccount
+        ?.deleteSession({ sessionId: "current" })
+        .catch(() => undefined);
+      await client.createEmailPasswordSession({
         email: normalize(email),
         password,
       });
-      if (error) throw error;
-
-      const { data: profile, error: profileError } = await client
-        .from("profiles")
-        .select("email, username")
-        .eq("id", data.user.id)
-        .single();
+      const profile = await client.get();
       if (
-        profileError ||
-        !profile ||
-        normalize(profile.username) !== normalize(username)
+        !profile.emailVerification ||
+        normalize(profile.name) !== normalize(username)
       ) {
-        await client.auth.signOut({ scope: "local" });
+        await client
+          .deleteSession({ sessionId: "current" })
+          .catch(() => undefined);
         throw new Error("invalid");
       }
 
       setAccount({
-        id: data.user.id,
+        id: profile.$id,
         email: profile.email,
-        username: profile.username,
+        username: profile.name,
       });
       setPassword("");
     } catch {

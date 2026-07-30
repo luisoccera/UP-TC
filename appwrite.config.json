@@ -1,0 +1,31 @@
+{
+  "projectId": "6a6bd26500326fd9d3ac",
+  "projectName": "UP-TC",
+  "endpoint": "https://sfo.cloud.appwrite.io/v1",
+  "functions": [
+    {
+      "$id": "delete-account",
+      "name": "Eliminar cuenta de UP Training Center",
+      "runtime": "node-22",
+      "path": "appwrite/functions/delete-account",
+      "entrypoint": "src/main.js",
+      "commands": "npm install",
+      "execute": [
+        "users"
+      ],
+      "events": [],
+      "schedule": "",
+      "timeout": 15,
+      "enabled": true,
+      "logging": false,
+      "ignore": [
+        "node_modules",
+        ".git"
+      ],
+      "scopes": [
+        "users.write"
+      ],
+      "vars": []
+    }
+  ]
+}

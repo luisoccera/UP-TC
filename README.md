@@ -6,7 +6,8 @@ C#, Java, SQL, Entity Framework Core, ASP.NET MVC, AJAX y microservicios.
 La aplicación incluye:
 
 - registro central con correo, usuario y contraseña;
-- verificación del correo con código y recuperación de contraseña;
+- verificación del correo y recuperación de contraseña mediante enlaces
+  seguros de Appwrite;
 - progreso sincronizado entre dispositivos;
 - copia local para continuar temporalmente sin conexión;
 - ruta de 36 semanas organizada por dominio;
@@ -18,25 +19,25 @@ La aplicación incluye:
 
 ## Dónde viven las cuentas
 
-Las cuentas ya no se guardan dentro de una sola computadora. Supabase conserva:
+Las cuentas ya no se guardan dentro de una sola computadora. Appwrite conserva:
 
-- la identidad y contraseña protegida en su sistema `auth`;
-- el correo y nombre de usuario en `public.profiles`;
-- el progreso individual en `public.learning_progress`.
+- la identidad y contraseña protegida en Appwrite Auth;
+- el correo y nombre de usuario en la cuenta;
+- el progreso individual en las preferencias privadas del usuario.
 
-Las políticas RLS limitan cada perfil y progreso a su propietario. IndexedDB
-solo conserva una copia local por usuario para uso sin conexión; las
-credenciales locales de la versión anterior se eliminan al actualizar.
+Appwrite limita las preferencias a la sesión de su propietario. IndexedDB solo
+conserva una copia local por usuario para uso sin conexión; las credenciales
+locales de la versión anterior se eliminan al actualizar.
 
 ## Configuración obligatoria
 
 Antes de probar el registro real, sigue
-[CLOUD-SETUP.md](docs/CLOUD-SETUP.md). Debes crear el proyecto de Supabase,
-aplicar la migración, desplegar la función de eliminación y agregar dos valores
-públicos a `.env.local`.
+[CLOUD-SETUP.md](docs/CLOUD-SETUP.md). Debes registrar las plataformas
+Web/Android/Apple, desplegar la función de eliminación y configurar la URL
+pública usada por los correos.
 
-Sin esos valores la app muestra una pantalla de configuración pendiente y no
-permite crear cuentas falsas o aisladas.
+Las tres variables públicas del proyecto **UP-TC** ya están incluidas en
+`.env.example`. No se incluyen API keys de servidor.
 
 ## Ejecutar desde el código
 
@@ -88,10 +89,11 @@ pnpm desktop:build
 
 - `app/components/AuthGate.tsx`: registro, verificación, recuperación y acceso.
 - `app/components/LearningApp.tsx`: experiencia y estado de aprendizaje.
-- `app/progressRepository.ts`: sincronización nube/copia local.
+- `app/appwriteClient.ts`: conexión pública al proyecto Appwrite UP-TC.
+- `app/progressRepository.ts`: preferencias Appwrite y copia local.
 - `app/localDatabase.ts`: caché IndexedDB sin credenciales.
-- `supabase/migrations`: tablas, políticas RLS y perfil automático.
-- `supabase/functions/delete-account`: eliminación segura de la cuenta.
+- `appwrite/functions/delete-account`: eliminación segura de la cuenta.
+- `appwrite.config.json`: configuración desplegable de la función Appwrite.
 - `android` e `ios`: proyectos nativos de Capacitor.
 - `desktop/main.cjs`: contenedor de escritorio con Electron.
 - `docs/PRIVACY-POLICY-DRAFT.md`: borrador que debe completar la empresa.

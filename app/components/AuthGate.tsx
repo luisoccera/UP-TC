@@ -1,12 +1,13 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import type { User } from "@supabase/supabase-js";
+import { ID, type Models } from "appwrite";
 import {
+  account,
+  appwriteRedirectUrl,
   cloudConfiguration,
-  requireSupabase,
-  supabase,
-} from "../supabaseClient";
+  requireAccount,
+} from "../appwriteClient";
 
 export type SessionUser = {
   id: string;
@@ -14,7 +15,13 @@ export type SessionUser = {
   username: string;
 };
 
-type AuthMode = "login" | "register" | "verify" | "forgot" | "reset";
+type AuthMode =
+  | "login"
+  | "register"
+  | "verify"
+  | "forgot"
+  | "recovery-sent"
+  | "reset";
 
 function normalizeEmail(value: string) {
   return value.trim().toLocaleLowerCase("es-MX");
@@ -44,21 +51,30 @@ function authMessage(error: unknown) {
   const message =
     error instanceof Error ? error.message.toLocaleLowerCase("es-MX") : "";
 
-  if (message.includes("invalid login credentials")) {
+  if (
+    message.includes("invalid credentials") ||
+    message.includes("user_invalid_credentials")
+  ) {
     return "El correo, usuario o contraseña no coinciden.";
   }
-  if (message.includes("email not confirmed")) {
-    return "Confirma el correo antes de iniciar sesión.";
+  if (
+    message.includes("already exists") ||
+    message.includes("user_already_exists")
+  ) {
+    return "Ese correo ya está registrado.";
   }
   if (
-    message.includes("duplicate") ||
-    message.includes("already") ||
-    message.includes("database error")
+    message.includes("token") ||
+    message.includes("secret") ||
+    message.includes("verification")
   ) {
-    return "Ese correo o nombre de usuario ya está registrado.";
+    return "El enlace no es válido o ya venció. Solicita uno nuevo.";
   }
-  if (message.includes("token") || message.includes("otp")) {
-    return "El código no es válido o ya venció. Solicita uno nuevo.";
+  if (
+    message.includes("redirect") ||
+    (message.includes("url") && message.includes("platform"))
+  ) {
+    return "La dirección de retorno todavía no está autorizada en Appwrite. Agrégala como plataforma Web.";
   }
   if (message.includes("fetch") || message.includes("network")) {
     return "No hay conexión con el servicio de cuentas. Revisa tu internet.";
@@ -68,29 +84,32 @@ function authMessage(error: unknown) {
     : "No se pudo verificar la cuenta. Intenta de nuevo.";
 }
 
-async function sessionUser(user: User): Promise<SessionUser> {
-  const client = requireSupabase();
-  const { data, error } = await client
-    .from("profiles")
-    .select("email, username")
-    .eq("id", user.id)
-    .single();
-  if (error || !data) {
+function sessionUser(user: Models.User<Models.Preferences>): SessionUser {
+  const username = normalizeUsername(user.name);
+  if (!username) {
     throw new Error(
-      "La cuenta existe, pero el perfil central no está disponible. Revisa la migración de Supabase.",
+      "La cuenta existe, pero no tiene un nombre de usuario configurado.",
     );
   }
-
   return {
-    id: user.id,
-    email: data.email,
-    username: data.username,
+    id: user.$id,
+    email: normalizeEmail(user.email),
+    username,
   };
 }
 
+function clearAuthParameters() {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  for (const parameter of ["authAction", "userId", "secret", "expire"]) {
+    url.searchParams.delete(parameter);
+  }
+  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
 export async function clearCloudSession() {
-  if (!supabase) return;
-  await supabase.auth.signOut({ scope: "local" });
+  if (!account) return;
+  await account.deleteSession({ sessionId: "current" }).catch(() => undefined);
 }
 
 export function AuthGate({
@@ -103,7 +122,8 @@ export function AuthGate({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
-  const [verificationCode, setVerificationCode] = useState("");
+  const [recoveryUserId, setRecoveryUserId] = useState("");
+  const [recoverySecret, setRecoverySecret] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -113,22 +133,63 @@ export function AuthGate({
     let alive = true;
 
     async function restoreSession() {
-      if (!supabase) {
+      if (!account) {
         if (alive) setCheckingSession(false);
         return;
       }
 
       try {
-        const {
-          data: { user },
-          error,
-        } = await supabase.auth.getUser();
-        if (error) throw error;
-        if (user?.email_confirmed_at && alive) {
-          onAuthenticated(await sessionUser(user));
+        const parameters = new URLSearchParams(window.location.search);
+        const action = parameters.get("authAction");
+        const userId = parameters.get("userId") ?? "";
+        const secret = parameters.get("secret") ?? "";
+
+        if (action === "recover-password" && userId && secret) {
+          if (alive) {
+            setRecoveryUserId(userId);
+            setRecoverySecret(secret);
+            setMode("reset");
+            setMessage(
+              "El enlace es válido. Crea ahora una contraseña nueva.",
+            );
+          }
+          return;
+        }
+
+        if (action === "verify-email" && userId && secret) {
+          await account.updateEmailVerification({ userId, secret });
+          clearAuthParameters();
+          try {
+            const verifiedUser = await account.get();
+            if (verifiedUser.emailVerification) {
+              if (alive) onAuthenticated(sessionUser(verifiedUser));
+              return;
+            }
+          } catch {
+            // El enlace también puede abrirse en un navegador sin la sesión original.
+          }
+          if (alive) {
+            setMode("login");
+            setMessage(
+              "Correo verificado. Ya puedes iniciar sesión en cualquiera de tus dispositivos.",
+            );
+          }
+          return;
+        }
+
+        const currentUser = await account.get();
+        if (currentUser.emailVerification) {
+          if (alive) onAuthenticated(sessionUser(currentUser));
+        } else if (alive) {
+          setEmail(normalizeEmail(currentUser.email));
+          setUsername(normalizeUsername(currentUser.name));
+          setMode("verify");
+          setMessage(
+            "Tu correo aún no está verificado. Abre el enlace que te enviamos.",
+          );
         }
       } catch {
-        await clearCloudSession();
+        // Una sesión ausente es el estado normal de la pantalla de acceso.
       } finally {
         if (alive) setCheckingSession(false);
       }
@@ -145,11 +206,24 @@ export function AuthGate({
     setMessage("");
     setPassword("");
     setPasswordConfirmation("");
-    setVerificationCode("");
+    setShowPassword(false);
+  }
+
+  async function returnToLogin() {
+    await clearCloudSession();
+    clearAuthParameters();
+    changeMode("login");
+  }
+
+  async function sendVerificationEmail() {
+    const client = requireAccount();
+    await client.createEmailVerification({
+      url: appwriteRedirectUrl("verify-email"),
+    });
   }
 
   async function register() {
-    const client = requireSupabase();
+    const client = requireAccount();
     const normalizedEmail = normalizeEmail(email);
     const normalizedUsername = normalizeUsername(username);
 
@@ -163,58 +237,46 @@ export function AuthGate({
     }
     validatePassword(password, passwordConfirmation);
 
-    const { data, error } = await client.auth.signUp({
+    await client.create({
+      userId: ID.unique(),
       email: normalizedEmail,
       password,
-      options: {
-        data: { username: normalizedUsername },
-      },
+      name: normalizedUsername,
     });
-    if (error) throw error;
-
-    if (data.session && data.user?.email_confirmed_at) {
-      onAuthenticated(await sessionUser(data.user));
-      return;
-    }
+    await client.createEmailPasswordSession({
+      email: normalizedEmail,
+      password,
+    });
 
     setEmail(normalizedEmail);
     setUsername(normalizedUsername);
     setPassword("");
     setPasswordConfirmation("");
     setMode("verify");
+    await sendVerificationEmail();
     setMessage(
-      "Enviamos un código a tu correo. Escríbelo aquí para activar la cuenta.",
+      "Enviamos un enlace a tu correo. Ábrelo para activar la cuenta y después vuelve aquí.",
     );
   }
 
-  async function verifyEmail() {
-    const client = requireSupabase();
-    if (!/^\d{6,10}$/.test(verificationCode.trim())) {
-      throw new Error("Escribe el código numérico que recibiste por correo.");
+  async function confirmVerifiedEmail() {
+    const client = requireAccount();
+    const currentUser = await client.get();
+    if (!currentUser.emailVerification) {
+      throw new Error(
+        "El correo todavía no aparece verificado. Abre el enlace del mensaje o solicita uno nuevo.",
+      );
     }
-
-    const { data, error } = await client.auth.verifyOtp({
-      email: normalizeEmail(email),
-      token: verificationCode.trim(),
-      type: "email",
-    });
-    if (error) throw error;
-    if (!data.user) throw new Error("No se pudo activar la cuenta.");
-    onAuthenticated(await sessionUser(data.user));
+    onAuthenticated(sessionUser(currentUser));
   }
 
-  async function resendCode() {
+  async function resendVerification() {
     setSubmitting(true);
     setMessage("");
     try {
-      const client = requireSupabase();
-      const { error } = await client.auth.resend({
-        email: normalizeEmail(email),
-        type: "signup",
-      });
-      if (error) throw error;
+      await sendVerificationEmail();
       setMessage(
-        "Enviamos un código nuevo. Revisa también la carpeta de spam.",
+        "Enviamos un enlace nuevo. Revisa también la carpeta de spam.",
       );
     } catch (error) {
       setMessage(authMessage(error));
@@ -224,73 +286,90 @@ export function AuthGate({
   }
 
   async function login() {
-    const client = requireSupabase();
+    const client = requireAccount();
     const normalizedEmail = normalizeEmail(email);
     const normalizedUsername = normalizeUsername(username);
-    const { data, error } = await client.auth.signInWithPassword({
+
+    await clearCloudSession();
+    await client.createEmailPasswordSession({
       email: normalizedEmail,
       password,
     });
-    if (error) throw error;
-    if (!data.user.email_confirmed_at) {
-      await clearCloudSession();
-      throw new Error("Confirma el correo antes de iniciar sesión.");
-    }
+    const currentUser = await client.get();
+    const user = sessionUser(currentUser);
 
-    const user = await sessionUser(data.user);
     if (normalizeUsername(user.username) !== normalizedUsername) {
       await clearCloudSession();
       throw new Error("El correo, usuario o contraseña no coinciden.");
+    }
+    if (!currentUser.emailVerification) {
+      setEmail(normalizedEmail);
+      setUsername(normalizedUsername);
+      setPassword("");
+      setMode("verify");
+      setMessage(
+        "Confirma el correo antes de entrar. Puedes solicitar un enlace nuevo.",
+      );
+      return;
     }
     onAuthenticated(user);
   }
 
   async function requestPasswordReset() {
-    const client = requireSupabase();
+    const client = requireAccount();
     const normalizedEmail = normalizeEmail(email);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       throw new Error("Escribe un correo electrónico válido.");
     }
 
-    const { error } = await client.auth.resetPasswordForEmail(normalizedEmail);
-    if (error) throw error;
+    await client.createRecovery({
+      email: normalizedEmail,
+      url: appwriteRedirectUrl("recover-password"),
+    });
     setEmail(normalizedEmail);
-    setMode("reset");
+    setMode("recovery-sent");
     setMessage(
-      "Enviamos un código para restablecer tu contraseña. Revisa también la carpeta de spam.",
+      "Enviamos un enlace para restablecer tu contraseña. Revisa también la carpeta de spam.",
     );
   }
 
   async function resetPassword() {
-    const client = requireSupabase();
-    if (!/^\d{6,10}$/.test(verificationCode.trim())) {
-      throw new Error("Escribe el código numérico que recibiste por correo.");
+    const client = requireAccount();
+    if (!recoveryUserId || !recoverySecret) {
+      throw new Error(
+        "El enlace de recuperación está incompleto. Solicita uno nuevo.",
+      );
     }
     validatePassword(password, passwordConfirmation);
 
-    const { data, error } = await client.auth.verifyOtp({
-      email: normalizeEmail(email),
-      token: verificationCode.trim(),
-      type: "recovery",
+    await client.updateRecovery({
+      userId: recoveryUserId,
+      secret: recoverySecret,
+      password,
     });
-    if (error) throw error;
-    if (!data.user) throw new Error("No se pudo verificar la recuperación.");
-
-    const { error: updateError } = await client.auth.updateUser({ password });
-    if (updateError) throw updateError;
-    onAuthenticated(await sessionUser(data.user));
+    clearAuthParameters();
+    setRecoveryUserId("");
+    setRecoverySecret("");
+    setPassword("");
+    setPasswordConfirmation("");
+    setMode("login");
+    setMessage(
+      "Contraseña actualizada. Ya puedes iniciar sesión con la nueva contraseña.",
+    );
   }
 
-  async function resendRecoveryCode() {
+  async function resendRecoveryEmail() {
     setSubmitting(true);
     setMessage("");
     try {
-      const client = requireSupabase();
-      const { error } = await client.auth.resetPasswordForEmail(
-        normalizeEmail(email),
+      const client = requireAccount();
+      await client.createRecovery({
+        email: normalizeEmail(email),
+        url: appwriteRedirectUrl("recover-password"),
+      });
+      setMessage(
+        "Enviamos un enlace nuevo. Revisa también la carpeta de spam.",
       );
-      if (error) throw error;
-      setMessage("Enviamos un código nuevo. Revisa también la carpeta de spam.");
     } catch (error) {
       setMessage(authMessage(error));
     } finally {
@@ -306,7 +385,7 @@ export function AuthGate({
       if (mode === "register") {
         await register();
       } else if (mode === "verify") {
-        await verifyEmail();
+        await confirmVerifiedEmail();
       } else if (mode === "forgot") {
         await requestPasswordReset();
       } else if (mode === "reset") {
@@ -324,17 +403,34 @@ export function AuthGate({
   if (checkingSession) {
     return (
       <main className="auth-loading" aria-live="polite">
-        <span className="brand-mark"><i /><b>UP</b></span>
+        <span className="brand-mark">
+          <i />
+          <b>UP</b>
+        </span>
         <p>Conectando tu espacio de aprendizaje…</p>
       </main>
     );
   }
 
+  const heading =
+    mode === "login"
+      ? "Bienvenido de nuevo"
+      : mode === "register"
+        ? "Crea tu cuenta"
+        : mode === "verify"
+          ? "Verifica tu correo"
+          : mode === "forgot" || mode === "recovery-sent"
+            ? "Recupera tu acceso"
+            : "Crea una contraseña nueva";
+
   return (
     <main className="auth-shell">
       <section className="auth-brand-panel" aria-label="UP Training Center">
         <div className="auth-brand-lockup">
-          <span className="brand-mark brand-mark--large"><i /><b>UP</b></span>
+          <span className="brand-mark brand-mark--large">
+            <i />
+            <b>UP</b>
+          </span>
           <span className="brand-name brand-name--light">
             <strong>UP</strong>
             <small>Training Center</small>
@@ -349,38 +445,42 @@ export function AuthGate({
           </p>
         </div>
         <div className="auth-trust-list">
-          <span><b>01</b> Correo verificado antes del primer acceso</span>
-          <span><b>02</b> Progreso sincronizado entre dispositivos</span>
-          <span><b>03</b> Copia local para continuar sin conexión</span>
+          <span>
+            <b>01</b> Correo verificado antes del primer acceso
+          </span>
+          <span>
+            <b>02</b> Progreso sincronizado entre dispositivos
+          </span>
+          <span>
+            <b>03</b> Copia local para continuar sin conexión
+          </span>
         </div>
       </section>
 
       <section className="auth-form-panel">
         <div className="auth-form-wrap">
           <span className="eyebrow">CUENTA UP SEGURA</span>
-          <h2>
-            {mode === "login"
-              ? "Bienvenido de nuevo"
-              : mode === "register"
-                ? "Crea tu cuenta"
-                : mode === "verify"
-                  ? "Verifica tu correo"
-                  : mode === "forgot"
-                    ? "Recupera tu acceso"
-                    : "Crea una contraseña nueva"}
-          </h2>
+          <h2>{heading}</h2>
           <p className="auth-intro">
             {mode === "login"
               ? "Usa los mismos datos en cualquiera de tus dispositivos."
               : mode === "register"
-                ? "Tu cuenta y progreso se guardarán en la nube de UP."
+                ? "Tu cuenta y progreso se guardarán en Appwrite."
                 : mode === "forgot"
-                  ? "Te enviaremos un código de recuperación a tu correo."
-                  : `Enviamos un código a ${email}.`}
+                  ? "Te enviaremos un enlace seguro a tu correo."
+                  : mode === "recovery-sent"
+                    ? `El enlace fue enviado a ${email}.`
+                    : mode === "verify"
+                      ? `Enviamos el enlace de activación a ${email}.`
+                      : "El enlace de recuperación ya fue validado."}
           </p>
 
           {(mode === "login" || mode === "register") && (
-            <div className="auth-tabs" role="tablist" aria-label="Acceso a la cuenta">
+            <div
+              className="auth-tabs"
+              role="tablist"
+              aria-label="Acceso a la cuenta"
+            >
               <button
                 type="button"
                 role="tab"
@@ -409,183 +509,175 @@ export function AuthGate({
             </p>
           )}
 
-          <form className="auth-form" onSubmit={submit}>
-            {mode === "verify" ? (
-              <label>
-                <span>Código de verificación</span>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  value={verificationCode}
-                  onChange={(event) =>
-                    setVerificationCode(event.target.value.replace(/\D/g, ""))
-                  }
-                  placeholder="000000"
-                  minLength={6}
-                  maxLength={10}
-                  required
-                />
-              </label>
-            ) : mode === "reset" ? (
-              <>
-                <label>
-                  <span>Código de recuperación</span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    value={verificationCode}
-                    onChange={(event) =>
-                      setVerificationCode(event.target.value.replace(/\D/g, ""))
-                    }
-                    placeholder="000000"
-                    minLength={6}
-                    maxLength={10}
-                    required
-                  />
-                </label>
-                <label>
-                  <span>Contraseña nueva</span>
-                  <span className="password-field">
+          {mode === "recovery-sent" ? (
+            <div className="auth-form">
+              {message && (
+                <p className="auth-message" role="status">
+                  {message}
+                </p>
+              )}
+            </div>
+          ) : (
+            <form className="auth-form" onSubmit={submit}>
+              {mode === "verify" ? (
+                <p className="auth-message auth-message--info" role="status">
+                  Abre el enlace del correo. Si lo abriste en otro navegador,
+                  vuelve aquí y pulsa el botón para comprobar la activación.
+                </p>
+              ) : mode === "reset" ? (
+                <>
+                  <label>
+                    <span>Contraseña nueva</span>
+                    <span className="password-field">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        autoComplete="new-password"
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                        placeholder="Mínimo 8 caracteres"
+                        minLength={8}
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((visible) => !visible)}
+                      >
+                        {showPassword ? "Ocultar" : "Mostrar"}
+                      </button>
+                    </span>
+                  </label>
+                  <label>
+                    <span>Confirma la contraseña</span>
                     <input
                       type={showPassword ? "text" : "password"}
                       autoComplete="new-password"
-                      value={password}
-                      onChange={(event) => setPassword(event.target.value)}
-                      placeholder="Mínimo 8 caracteres"
+                      value={passwordConfirmation}
+                      onChange={(event) =>
+                        setPasswordConfirmation(event.target.value)
+                      }
+                      placeholder="Repite tu contraseña"
                       minLength={8}
                       required
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((visible) => !visible)}
-                    >
-                      {showPassword ? "Ocultar" : "Mostrar"}
-                    </button>
-                  </span>
-                </label>
-                <label>
-                  <span>Confirma la contraseña</span>
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    autoComplete="new-password"
-                    value={passwordConfirmation}
-                    onChange={(event) =>
-                      setPasswordConfirmation(event.target.value)
-                    }
-                    placeholder="Repite tu contraseña"
-                    minLength={8}
-                    required
-                  />
-                </label>
-              </>
-            ) : (
-              <>
-                <label>
-                  <span>Correo electrónico</span>
-                  <input
-                    type="email"
-                    autoComplete="email"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    placeholder="nombre@empresa.com"
-                    required
-                  />
-                </label>
-                {mode !== "forgot" && (
-                  <>
-                    <label>
-                      <span>Nombre de usuario</span>
-                      <input
-                        type="text"
-                        autoComplete="username"
-                        value={username}
-                        onChange={(event) => setUsername(event.target.value)}
-                        placeholder="tu.usuario"
-                        minLength={3}
-                        maxLength={24}
-                        required
-                      />
-                    </label>
-                    <label>
-                      <span>Contraseña</span>
-                      <span className="password-field">
-                        <input
-                          type={showPassword ? "text" : "password"}
-                          autoComplete={mode === "login" ? "current-password" : "new-password"}
-                          value={password}
-                          onChange={(event) => setPassword(event.target.value)}
-                          placeholder="Mínimo 8 caracteres"
-                          minLength={8}
-                          required
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword((visible) => !visible)}
-                          aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-                        >
-                          {showPassword ? "Ocultar" : "Mostrar"}
-                        </button>
-                      </span>
-                    </label>
-                    {mode === "register" && (
+                  </label>
+                </>
+              ) : (
+                <>
+                  <label>
+                    <span>Correo electrónico</span>
+                    <input
+                      type="email"
+                      autoComplete="email"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      placeholder="nombre@empresa.com"
+                      required
+                    />
+                  </label>
+                  {mode !== "forgot" && (
+                    <>
                       <label>
-                        <span>Confirma la contraseña</span>
+                        <span>Nombre de usuario</span>
                         <input
-                          type={showPassword ? "text" : "password"}
-                          autoComplete="new-password"
-                          value={passwordConfirmation}
-                          onChange={(event) =>
-                            setPasswordConfirmation(event.target.value)
-                          }
-                          placeholder="Repite tu contraseña"
-                          minLength={8}
+                          type="text"
+                          autoComplete="username"
+                          value={username}
+                          onChange={(event) => setUsername(event.target.value)}
+                          placeholder="tu.usuario"
+                          minLength={3}
+                          maxLength={24}
                           required
                         />
                       </label>
-                    )}
-                  </>
-                )}
-              </>
-            )}
+                      <label>
+                        <span>Contraseña</span>
+                        <span className="password-field">
+                          <input
+                            type={showPassword ? "text" : "password"}
+                            autoComplete={
+                              mode === "login"
+                                ? "current-password"
+                                : "new-password"
+                            }
+                            value={password}
+                            onChange={(event) => setPassword(event.target.value)}
+                            placeholder="Mínimo 8 caracteres"
+                            minLength={8}
+                            required
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setShowPassword((visible) => !visible)
+                            }
+                            aria-label={
+                              showPassword
+                                ? "Ocultar contraseña"
+                                : "Mostrar contraseña"
+                            }
+                          >
+                            {showPassword ? "Ocultar" : "Mostrar"}
+                          </button>
+                        </span>
+                      </label>
+                      {mode === "register" && (
+                        <label>
+                          <span>Confirma la contraseña</span>
+                          <input
+                            type={showPassword ? "text" : "password"}
+                            autoComplete="new-password"
+                            value={passwordConfirmation}
+                            onChange={(event) =>
+                              setPasswordConfirmation(event.target.value)
+                            }
+                            placeholder="Repite tu contraseña"
+                            minLength={8}
+                            required
+                          />
+                        </label>
+                      )}
+                    </>
+                  )}
+                </>
+              )}
 
-            {message && (
-              <p className="auth-message" role="alert">
-                {message}
-              </p>
-            )}
+              {message && (
+                <p className="auth-message" role="alert">
+                  {message}
+                </p>
+              )}
 
-            <button
-              className="auth-submit"
-              type="submit"
-              disabled={submitting || !cloudConfiguration.ready}
-            >
-              {submitting
-                ? "Verificando…"
-                : mode === "login"
-                  ? "Entrar a mi formación"
-                  : mode === "register"
-                    ? "Crear cuenta"
-                    : mode === "verify"
-                      ? "Verificar y comenzar"
-                      : mode === "forgot"
-                        ? "Enviar código"
-                        : "Cambiar contraseña"}
-              <span aria-hidden="true">→</span>
-            </button>
-          </form>
+              <button
+                className="auth-submit"
+                type="submit"
+                disabled={submitting || !cloudConfiguration.ready}
+              >
+                {submitting
+                  ? "Verificando…"
+                  : mode === "login"
+                    ? "Entrar a mi formación"
+                    : mode === "register"
+                      ? "Crear cuenta"
+                      : mode === "verify"
+                        ? "Ya verifiqué mi correo"
+                        : mode === "forgot"
+                          ? "Enviar enlace"
+                          : "Cambiar contraseña"}
+                <span aria-hidden="true">→</span>
+              </button>
+            </form>
+          )}
 
           {mode === "verify" && (
             <div className="auth-secondary-actions">
               <button
                 type="button"
                 disabled={submitting}
-                onClick={() => void resendCode()}
+                onClick={() => void resendVerification()}
               >
-                Reenviar código
+                Reenviar enlace
               </button>
-              <button type="button" onClick={() => changeMode("login")}>
+              <button type="button" onClick={() => void returnToLogin()}>
                 Volver al inicio
               </button>
             </div>
@@ -604,23 +696,30 @@ export function AuthGate({
               </button>
             </div>
           )}
-          {mode === "reset" && (
+          {mode === "recovery-sent" && (
             <div className="auth-secondary-actions">
               <button
                 type="button"
                 disabled={submitting}
-                onClick={() => void resendRecoveryCode()}
+                onClick={() => void resendRecoveryEmail()}
               >
-                Reenviar código
+                Reenviar enlace
               </button>
               <button type="button" onClick={() => changeMode("login")}>
                 Volver al inicio
               </button>
             </div>
           )}
+          {mode === "reset" && (
+            <div className="auth-secondary-actions">
+              <button type="button" onClick={() => void returnToLogin()}>
+                Cancelar y volver
+              </button>
+            </div>
+          )}
 
           <p className="auth-privacy">
-            Supabase gestiona la identidad y nunca entrega tu contraseña a UP
+            Appwrite protege la identidad y nunca entrega tu contraseña a UP
             Training Center. El progreso se limita a tu propia cuenta.
           </p>
         </div>

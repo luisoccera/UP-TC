@@ -37,6 +37,6 @@
     "desktop/dist",
     "desktop-dist",
     "release",
-    "supabase/functions"
+    "appwrite/functions"
   ]
 }

@@ -25,38 +25,35 @@ test("ships the UP Training Center product instead of the starter preview", asyn
   assert.doesNotMatch(page, /codex-preview|SkeletonPreview/);
 });
 
-test("uses verified cloud accounts and keeps only an offline progress cache", async () => {
-  const [auth, storage, client, repository, migration] = await Promise.all([
+test("uses verified Appwrite accounts and keeps only an offline progress cache", async () => {
+  const [auth, storage, client, repository, appwriteConfig] = await Promise.all([
     readFile(new URL("app/components/AuthGate.tsx", root), "utf8"),
     readFile(new URL("app/localDatabase.ts", root), "utf8"),
-    readFile(new URL("app/supabaseClient.ts", root), "utf8"),
+    readFile(new URL("app/appwriteClient.ts", root), "utf8"),
     readFile(new URL("app/progressRepository.ts", root), "utf8"),
-    readFile(
-      new URL(
-        "supabase/migrations/202607240001_accounts_and_progress.sql",
-        root,
-      ),
-      "utf8",
-    ),
+    readFile(new URL("appwrite.config.json", root), "utf8"),
   ]);
 
   assert.match(auth, /type="email"/);
   assert.match(auth, /autoComplete="username"/);
   assert.match(auth, /type=\{showPassword \? "text" : "password"\}/);
-  assert.match(auth, /\.auth\.signUp/);
-  assert.match(auth, /\.auth\.verifyOtp/);
-  assert.match(auth, /\.auth\.signInWithPassword/);
-  assert.match(auth, /\.auth\.resetPasswordForEmail/);
-  assert.match(client, /VITE_SUPABASE_URL/);
-  assert.match(client, /VITE_SUPABASE_PUBLISHABLE_KEY/);
+  assert.match(auth, /\.create\(\{/);
+  assert.match(auth, /\.createEmailVerification/);
+  assert.match(auth, /\.updateEmailVerification/);
+  assert.match(auth, /\.createEmailPasswordSession/);
+  assert.match(auth, /\.createRecovery/);
+  assert.match(auth, /\.updateRecovery/);
+  assert.match(client, /VITE_APPWRITE_ENDPOINT/);
+  assert.match(client, /VITE_APPWRITE_PROJECT_ID/);
+  assert.match(client, /VITE_APPWRITE_PUBLIC_URL/);
   assert.match(repository, /function progressKey\(userId: string\)/);
-  assert.match(repository, /\.from\("learning_progress"\)\.upsert/);
+  assert.match(repository, /\.updatePrefs\(/);
+  assert.match(repository, /\.getPrefs</);
   assert.match(storage, /LOCAL_DATABASE_VERSION = 3/);
   assert.match(storage, /deleteObjectStore\("users"\)/);
   assert.doesNotMatch(auth, /PBKDF2|passwordHash/);
-  assert.match(migration, /enable row level security/);
-  assert.match(migration, /auth\.uid\(\)/);
-  assert.match(migration, /on delete cascade/);
+  assert.match(appwriteConfig, /"projectId": "6a6bd26500326fd9d3ac"/);
+  assert.match(appwriteConfig, /"users\.write"/);
 });
 
 test("supports in-app and web account deletion through an authenticated server function", async () => {
@@ -64,7 +61,7 @@ test("supports in-app and web account deletion through an authenticated server f
     readFile(new URL("app/components/LearningApp.tsx", root), "utf8"),
     readFile(new URL("app/accountRepository.ts", root), "utf8"),
     readFile(
-      new URL("supabase/functions/delete-account/index.ts", root),
+      new URL("appwrite/functions/delete-account/src/main.js", root),
       "utf8",
     ),
     readFile(
@@ -75,12 +72,13 @@ test("supports in-app and web account deletion through an authenticated server f
 
   assert.match(app, /Eliminar mi cuenta/);
   assert.match(app, /escribe ELIMINAR/);
-  assert.match(account, /\.functions\.invoke\("delete-account"/);
-  assert.match(edgeFunction, /auth\.admin\.deleteUser/);
-  assert.match(edgeFunction, /SUPABASE_SERVICE_ROLE_KEY/);
-  assert.match(edgeFunction, /admin\.auth\.getUser\(token\)/);
+  assert.match(account, /\.createExecution\(\{/);
+  assert.match(account, /ExecutionMethod\.DELETE/);
+  assert.match(edgeFunction, /new Users\(client\)\.delete/);
+  assert.match(edgeFunction, /x-appwrite-user-id/);
+  assert.match(edgeFunction, /x-appwrite-key/);
   assert.match(webPortal, /Solicita la eliminación de tu cuenta/);
-  assert.match(webPortal, /signInWithPassword/);
+  assert.match(webPortal, /createEmailPasswordSession/);
   assert.match(webPortal, /deleteCurrentAccount/);
 });
 
@@ -100,6 +98,8 @@ test("includes a portable Windows desktop package", async () => {
   assert.match(desktopConfig, /productName: UP Training Center/);
   assert.match(desktopConfig, /target: portable/);
   assert.match(desktopMain, /BrowserWindow/);
+  assert.match(desktopMain, /localServer\.listen\(0, "127\.0\.0\.1"/);
+  assert.match(desktopMain, /loadURL\(appOrigin\)/);
   assert.match(desktopMain, /contextIsolation:\s*true/);
   assert.match(desktopMain, /nodeIntegration:\s*false/);
   assert.match(desktopVite, /outDir:\s*"dist"/);
