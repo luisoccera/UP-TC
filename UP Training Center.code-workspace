@@ -1,0 +1,19 @@
+{
+  "folders": [
+    {
+      "name": "UP Training Center",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/.next": true,
+      "**/.vinext": true,
+      "**/desktop/dist": true,
+      "**/node_modules": true,
+      "**/release": true
+    },
+    "editor.formatOnSave": true,
+    "typescript.tsdk": "node_modules/typescript/lib"
+  }
+}

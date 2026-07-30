@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">UP Training Center</string>
+    <string name="title_activity_main">UP Training Center</string>
+    <string name="package_name">com.upconsultancy.trainingcenter</string>
+    <string name="custom_url_scheme">com.upconsultancy.trainingcenter</string>
+</resources>

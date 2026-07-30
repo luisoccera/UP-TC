@@ -1,82 +1,97 @@
 # UP Training Center
 
-UP Training Center es una aplicación educativa instalable y local-first para aprender
+UP Training Center es una aplicación educativa multiplataforma para aprender
 C#, Java, SQL, Entity Framework Core, ASP.NET MVC, AJAX y microservicios.
 
-La primera versión incluye:
+La aplicación incluye:
 
-- registro e inicio de sesión local con correo, usuario y contraseña protegida;
-- progreso independiente para cada cuenta de esta instalación;
+- registro central con correo, usuario y contraseña;
+- verificación del correo con código y recuperación de contraseña;
+- progreso sincronizado entre dispositivos;
+- copia local para continuar temporalmente sin conexión;
 - ruta de 36 semanas organizada por dominio;
 - laboratorio con retroalimentación específica por error;
 - preguntas y problemas de entrevistas técnicas;
-- progreso, XP, racha y dominio por tecnología;
-- persistencia local con IndexedDB;
 - exportación e importación de un respaldo JSON;
-- manifiesto PWA y modo sin conexión.
+- eliminación completa de la cuenta desde la aplicación;
+- proyectos para Windows, web/PWA, Android y iOS.
 
-## Probar el ejecutable
+## Dónde viven las cuentas
 
-Abre esta carpeta:
+Las cuentas ya no se guardan dentro de una sola computadora. Supabase conserva:
 
-```text
-C:\Users\luisg\OneDrive\Escritorio\Proyectos\UP Training Center
-```
+- la identidad y contraseña protegida en su sistema `auth`;
+- el correo y nombre de usuario en `public.profiles`;
+- el progreso individual en `public.learning_progress`.
 
-Ejecuta `UP Training Center.exe`. Es una versión portátil: no requiere
-instalador y guarda las cuentas y el progreso en el perfil local de Windows.
+Las políticas RLS limitan cada perfil y progreso a su propietario. IndexedDB
+solo conserva una copia local por usuario para uso sin conexión; las
+credenciales locales de la versión anterior se eliminan al actualizar.
+
+## Configuración obligatoria
+
+Antes de probar el registro real, sigue
+[CLOUD-SETUP.md](docs/CLOUD-SETUP.md). Debes crear el proyecto de Supabase,
+aplicar la migración, desplegar la función de eliminación y agregar dos valores
+públicos a `.env.local`.
+
+Sin esos valores la app muestra una pantalla de configuración pendiente y no
+permite crear cuentas falsas o aisladas.
 
 ## Ejecutar desde el código
 
 Requiere Node.js 22.13 o posterior.
 
-En Windows, abre PowerShell y entra al proyecto:
+Para ver y editar todo el código, abre `UP Training Center.code-workspace` con
+Visual Studio Code.
 
-```bash
+```powershell
 cd "C:\Users\luisg\OneDrive\Escritorio\Proyectos\UP Training Center"
 pnpm install
 pnpm dev
 ```
 
-La app queda disponible en [http://localhost:3000](http://localhost:3000).
-Deja abierta la terminal mientras haces pruebas. Para detenerla, presiona
+Abre [http://localhost:3000](http://localhost:3000). Para detenerla presiona
 `Ctrl+C`.
+
+## Compilar para cada plataforma
+
+```powershell
+# Windows portable
+pnpm desktop:dist
+
+# Sincronizar los proyectos móviles
+pnpm mobile:sync
+
+# Abrir Android Studio
+pnpm mobile:android
+
+# Abrir Xcode, únicamente desde macOS
+pnpm mobile:ios
+```
+
+El ejecutable de Windows queda en `release\UP Training Center.exe`. Los pasos
+de firma y publicación están en
+[STORE-RELEASE.md](docs/STORE-RELEASE.md).
 
 ## Validar
 
-```bash
-pnpm build
+```powershell
 pnpm test
-pnpm lint
 pnpm exec tsc --noEmit
+pnpm lint
+pnpm build
+pnpm desktop:build
 ```
-
-Para construir otra copia del ejecutable:
-
-```bash
-pnpm desktop:dist
-```
-
-El resultado se genera en `release\UP Training Center.exe`.
-
-## Privacidad del progreso
-
-Las cuentas se verifican dentro de esta instalación. La contraseña se deriva con
-PBKDF2 y una sal aleatoria; no se guarda como texto. El correo no recibe un
-código y no existe recuperación remota de contraseña en esta versión.
-
-El progreso vive en IndexedDB y queda separado por usuario. La vista
-**Progreso** permite descargar y restaurar una copia. La sincronización entre
-dispositivos y la verificación real de propiedad del correo requieren una fase
-posterior con servidor y servicio de correo.
 
 ## Estructura principal
 
+- `app/components/AuthGate.tsx`: registro, verificación, recuperación y acceso.
 - `app/components/LearningApp.tsx`: experiencia y estado de aprendizaje.
-- `app/components/AuthGate.tsx`: registro e inicio de sesión local.
-- `app/localDatabase.ts`: cuentas y progreso en IndexedDB.
-- `app/data.ts`: rutas, lecciones, ejercicios y entrevistas.
-- `desktop/main.cjs`: contenedor seguro de escritorio con Electron.
-- `app/manifest.ts`: instalación PWA.
-- `public/sw.js`: caché del shell para uso sin conexión.
-- `docs/PRODUCT-PLAN.md`: plan pedagógico y técnico.
+- `app/progressRepository.ts`: sincronización nube/copia local.
+- `app/localDatabase.ts`: caché IndexedDB sin credenciales.
+- `supabase/migrations`: tablas, políticas RLS y perfil automático.
+- `supabase/functions/delete-account`: eliminación segura de la cuenta.
+- `android` e `ios`: proyectos nativos de Capacitor.
+- `desktop/main.cjs`: contenedor de escritorio con Electron.
+- `docs/PRIVACY-POLICY-DRAFT.md`: borrador que debe completar la empresa.

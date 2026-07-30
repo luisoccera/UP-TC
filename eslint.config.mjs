@@ -12,6 +12,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "android/**",
+    "ios/**",
+    "desktop/dist/**",
+    "desktop-dist/**",
+    "release/**",
+    "supabase/functions/**",
   ]),
 ]);
 

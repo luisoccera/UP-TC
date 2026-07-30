@@ -25,24 +25,63 @@ test("ships the UP Training Center product instead of the starter preview", asyn
   assert.doesNotMatch(page, /codex-preview|SkeletonPreview/);
 });
 
-test("registers local accounts with protected credentials and isolated progress", async () => {
-  const [auth, app, storage] = await Promise.all([
+test("uses verified cloud accounts and keeps only an offline progress cache", async () => {
+  const [auth, storage, client, repository, migration] = await Promise.all([
     readFile(new URL("app/components/AuthGate.tsx", root), "utf8"),
-    readFile(new URL("app/components/LearningApp.tsx", root), "utf8"),
     readFile(new URL("app/localDatabase.ts", root), "utf8"),
+    readFile(new URL("app/supabaseClient.ts", root), "utf8"),
+    readFile(new URL("app/progressRepository.ts", root), "utf8"),
+    readFile(
+      new URL(
+        "supabase/migrations/202607240001_accounts_and_progress.sql",
+        root,
+      ),
+      "utf8",
+    ),
   ]);
 
   assert.match(auth, /type="email"/);
   assert.match(auth, /autoComplete="username"/);
   assert.match(auth, /type=\{showPassword \? "text" : "password"\}/);
-  assert.match(auth, /PBKDF2/);
-  assert.match(auth, /SHA-256/);
-  assert.match(auth, /210_000/);
-  assert.match(storage, /LOCAL_DATABASE_VERSION = 2/);
-  assert.match(storage, /createIndex\("email", "email", \{ unique: true \}\)/);
-  assert.match(storage, /createIndex\("username", "username", \{ unique: true \}\)/);
-  assert.match(app, /function progressKey\(userId: string\)/);
-  assert.doesNotMatch(app, /LEGACY_PROGRESS_KEY|store\.get\("current"\)/);
+  assert.match(auth, /\.auth\.signUp/);
+  assert.match(auth, /\.auth\.verifyOtp/);
+  assert.match(auth, /\.auth\.signInWithPassword/);
+  assert.match(auth, /\.auth\.resetPasswordForEmail/);
+  assert.match(client, /VITE_SUPABASE_URL/);
+  assert.match(client, /VITE_SUPABASE_PUBLISHABLE_KEY/);
+  assert.match(repository, /function progressKey\(userId: string\)/);
+  assert.match(repository, /\.from\("learning_progress"\)\.upsert/);
+  assert.match(storage, /LOCAL_DATABASE_VERSION = 3/);
+  assert.match(storage, /deleteObjectStore\("users"\)/);
+  assert.doesNotMatch(auth, /PBKDF2|passwordHash/);
+  assert.match(migration, /enable row level security/);
+  assert.match(migration, /auth\.uid\(\)/);
+  assert.match(migration, /on delete cascade/);
+});
+
+test("supports in-app and web account deletion through an authenticated server function", async () => {
+  const [app, account, edgeFunction, webPortal] = await Promise.all([
+    readFile(new URL("app/components/LearningApp.tsx", root), "utf8"),
+    readFile(new URL("app/accountRepository.ts", root), "utf8"),
+    readFile(
+      new URL("supabase/functions/delete-account/index.ts", root),
+      "utf8",
+    ),
+    readFile(
+      new URL("app/components/DeleteAccountPortal.tsx", root),
+      "utf8",
+    ),
+  ]);
+
+  assert.match(app, /Eliminar mi cuenta/);
+  assert.match(app, /escribe ELIMINAR/);
+  assert.match(account, /\.functions\.invoke\("delete-account"/);
+  assert.match(edgeFunction, /auth\.admin\.deleteUser/);
+  assert.match(edgeFunction, /SUPABASE_SERVICE_ROLE_KEY/);
+  assert.match(edgeFunction, /admin\.auth\.getUser\(token\)/);
+  assert.match(webPortal, /Solicita la eliminación de tu cuenta/);
+  assert.match(webPortal, /signInWithPassword/);
+  assert.match(webPortal, /deleteCurrentAccount/);
 });
 
 test("includes a portable Windows desktop package", async () => {
@@ -64,6 +103,29 @@ test("includes a portable Windows desktop package", async () => {
   assert.match(desktopMain, /contextIsolation:\s*true/);
   assert.match(desktopMain, /nodeIntegration:\s*false/);
   assert.match(desktopVite, /outDir:\s*"dist"/);
+});
+
+test("includes native Android and iOS projects with one stable app id", async () => {
+  const [capacitor, packageJson, android, androidManifest, iosInfo] =
+    await Promise.all([
+      readFile(new URL("capacitor.config.ts", root), "utf8"),
+      readFile(new URL("package.json", root), "utf8"),
+      readFile(new URL("android/app/build.gradle", root), "utf8"),
+      readFile(
+        new URL("android/app/src/main/AndroidManifest.xml", root),
+        "utf8",
+      ),
+      readFile(new URL("ios/App/App/Info.plist", root), "utf8"),
+    ]);
+
+  assert.match(capacitor, /com\.upconsultancy\.trainingcenter/);
+  assert.match(capacitor, /appName:\s*"UP Training Center"/);
+  assert.match(capacitor, /webDir:\s*"desktop\/dist"/);
+  assert.match(packageJson, /"@capacitor\/android"/);
+  assert.match(packageJson, /"@capacitor\/ios"/);
+  assert.match(android, /applicationId "com\.upconsultancy\.trainingcenter"/);
+  assert.match(androidManifest, /android\.permission\.INTERNET/);
+  assert.match(iosInfo, /UP Training Center/);
 });
 
 test("starts progress at zero and derives mastery from demonstrated work", async () => {

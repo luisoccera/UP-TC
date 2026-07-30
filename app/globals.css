@@ -351,6 +351,12 @@ button:disabled {
   line-height: 1.5;
 }
 
+.auth-message--info {
+  border-color: #dccfc9;
+  background: #f7f2ef;
+  color: #5f5053;
+}
+
 .auth-submit {
   display: flex;
   min-height: 52px;
@@ -368,8 +374,31 @@ button:disabled {
   cursor: pointer;
 }
 
+.auth-submit:disabled {
+  opacity: 0.56;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
 .auth-submit span {
   font-size: 18px;
+}
+
+.auth-secondary-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.auth-secondary-actions button {
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--green);
+  font-size: 10px;
+  font-weight: 850;
+  cursor: pointer;
 }
 
 .auth-privacy {
@@ -742,6 +771,11 @@ button:disabled {
 .status-dot--saving {
   background: #d6a429;
   animation: pulse 1s infinite;
+}
+
+.status-dot--offline {
+  background: #b66c21;
+  box-shadow: 0 0 0 4px rgba(182, 108, 33, 0.11);
 }
 
 @keyframes pulse {
@@ -2116,7 +2150,8 @@ button:disabled {
 }
 
 .data-card .primary-button,
-.data-card .secondary-button {
+.data-card .secondary-button,
+.data-card .danger-button {
   width: 100%;
   min-height: 40px;
   font-size: 12px;
@@ -2124,6 +2159,126 @@ button:disabled {
 
 .data-card .secondary-button {
   margin-top: 7px;
+}
+
+.danger-button {
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, white);
+  border-radius: 10px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.danger-button:hover {
+  border-color: var(--danger);
+}
+
+.danger-button:disabled {
+  cursor: wait;
+  opacity: 0.64;
+}
+
+.delete-portal {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 28px;
+  background:
+    radial-gradient(circle at 10% 10%, rgba(205, 0, 15, 0.08), transparent 34%),
+    var(--canvas);
+}
+
+.delete-portal-card {
+  width: min(100%, 560px);
+  padding: 32px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--paper);
+  box-shadow: 0 24px 70px rgba(40, 22, 22, 0.1);
+}
+
+.delete-portal-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.delete-portal-content,
+.delete-portal-result {
+  display: grid;
+  gap: 16px;
+  margin-top: 36px;
+}
+
+.delete-portal-content h1,
+.delete-portal-result h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(30px, 7vw, 46px);
+  letter-spacing: -0.055em;
+  line-height: 1.02;
+}
+
+.delete-portal-content > p,
+.delete-portal-result p,
+.delete-portal-note {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.delete-portal-content > label {
+  display: grid;
+  gap: 7px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.delete-portal-content > label input {
+  min-height: 47px;
+  padding: 0 13px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+
+.delete-portal-content > .danger-button {
+  min-height: 48px;
+}
+
+.delete-portal-result {
+  text-align: center;
+}
+
+.delete-portal-result > span {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  margin: 0 auto;
+  border-radius: 50%;
+  background: var(--lime);
+  color: var(--green);
+  font-size: 25px;
+  font-weight: 900;
+}
+
+.delete-portal-result a {
+  color: var(--red);
+  font-weight: 800;
+}
+
+.delete-portal-note {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
 }
 
 .activity-card ul {

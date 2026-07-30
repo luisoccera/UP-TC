@@ -1,7 +1,7 @@
 {
   "name": "up-training-center",
   "version": "0.1.0",
-  "description": "Formación tecnológica local de UP Consultancy Services",
+  "description": "Formación tecnológica multiplataforma de UP Consultancy Services",
   "author": "UP Consultancy Services",
   "private": true,
   "main": "desktop/main.cjs",
@@ -16,17 +16,27 @@
     "desktop:build": "vite build --config vite.desktop.config.ts",
     "desktop:start": "pnpm desktop:build && electron .",
     "desktop:dist": "pnpm desktop:build && electron-builder --projectDir desktop --win portable --x64",
+    "mobile:sync": "pnpm desktop:build && cap sync",
+    "mobile:android": "pnpm mobile:sync && cap open android",
+    "mobile:ios": "pnpm mobile:sync && cap open ios",
     "test": "node --test tests/app.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@capacitor/android": "8.4.2",
+    "@capacitor/app": "8.1.1",
+    "@capacitor/core": "8.4.2",
+    "@capacitor/ios": "8.4.2",
+    "@supabase/supabase-js": "2.110.8",
     "drizzle-orm": "0.45.2",
     "next": "16.2.6",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },
   "devDependencies": {
+    "@capacitor/assets": "3.0.5",
+    "@capacitor/cli": "8.4.2",
     "@cloudflare/vite-plugin": "1.37.1",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",

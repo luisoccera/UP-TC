@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { deleteCurrentAccount } from "../accountRepository";
 import {
   exercises,
   interviewQuestions,
@@ -19,12 +20,12 @@ import {
   type TrackId,
 } from "../data";
 import {
-  openLocalDatabase,
-  PROGRESS_STORE_NAME,
-} from "../localDatabase";
+  loadSyncedProgress,
+  saveSyncedProgress,
+} from "../progressRepository";
 import {
   AuthGate,
-  clearLocalSession,
+  clearCloudSession,
   type SessionUser,
 } from "./AuthGate";
 
@@ -35,6 +36,8 @@ type Feedback = {
   title: string;
   message: string;
 };
+
+type SyncState = "synced" | "saving" | "offline";
 
 type ProgressState = {
   xp: number;
@@ -82,43 +85,6 @@ const navigation: { id: ViewId; label: string; glyph: string }[] = [
   { id: "interviews", label: "Entrevistas", glyph: "◎" },
   { id: "progress", label: "Progreso", glyph: "▥" },
 ];
-
-function progressKey(userId: string) {
-  return `user:${userId}`;
-}
-
-async function readSavedProgress(userId: string): Promise<ProgressState | null> {
-  const database = await openLocalDatabase();
-  return new Promise((resolve, reject) => {
-    const transaction = database.transaction(PROGRESS_STORE_NAME, "readonly");
-    const store = transaction.objectStore(PROGRESS_STORE_NAME);
-    const request = store.get(progressKey(userId));
-    request.onsuccess = () =>
-      resolve((request.result as ProgressState) ?? null);
-    request.onerror = () => reject(request.error);
-    transaction.oncomplete = () => database.close();
-  });
-}
-
-async function saveProgress(
-  progress: ProgressState,
-  userId: string,
-): Promise<void> {
-  const database = await openLocalDatabase();
-  return new Promise((resolve, reject) => {
-    const transaction = database.transaction(PROGRESS_STORE_NAME, "readwrite");
-    const store = transaction.objectStore(PROGRESS_STORE_NAME);
-    store.put(progress, progressKey(userId));
-    transaction.oncomplete = () => {
-      database.close();
-      resolve();
-    };
-    transaction.onerror = () => {
-      database.close();
-      reject(transaction.error);
-    };
-  });
-}
 
 function isProgressState(value: unknown): value is ProgressState {
   if (!value || typeof value !== "object") return false;
@@ -252,11 +218,25 @@ function normalizeProgress(stored: ProgressState): ProgressState {
   };
 }
 
-function StatusPill({ saved }: { saved: boolean }) {
+function StatusPill({ syncState }: { syncState: SyncState }) {
+  const label =
+    syncState === "synced"
+      ? "Sincronizado en la nube"
+      : syncState === "saving"
+        ? "Guardando progreso…"
+        : "Guardado sin conexión";
   return (
     <div className="save-status" aria-live="polite">
-      <span className={saved ? "status-dot" : "status-dot status-dot--saving"} />
-      {saved ? "Guardado en este dispositivo" : "Guardando progreso…"}
+      <span
+        className={`status-dot ${
+          syncState === "saving"
+            ? "status-dot--saving"
+            : syncState === "offline"
+              ? "status-dot--offline"
+              : ""
+        }`}
+      />
+      {label}
     </div>
   );
 }
@@ -279,7 +259,7 @@ export function LearningApp() {
   const [activeView, setActiveView] = useState<ViewId>("today");
   const [progress, setProgress] = useState<ProgressState>(initialProgress);
   const [hydrated, setHydrated] = useState(false);
-  const [saved, setSaved] = useState(true);
+  const [syncState, setSyncState] = useState<SyncState>("synced");
   const [activeExerciseId, setActiveExerciseId] = useState(exercises[0].id);
   const [codeByExercise, setCodeByExercise] = useState<Record<string, string>>(
     Object.fromEntries(exercises.map((exercise) => [exercise.id, exercise.starter])),
@@ -297,6 +277,7 @@ export function LearningApp() {
   const [installPrompt, setInstallPrompt] =
     useState<BeforeInstallPromptEvent | null>(null);
   const [notice, setNotice] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const activeExercise =
@@ -334,16 +315,18 @@ export function LearningApp() {
     if (!currentUser) return;
 
     let alive = true;
-    readSavedProgress(currentUser.id)
-      .then((stored) => {
+    loadSyncedProgress(currentUser.id)
+      .then(({ progress: stored, synced }) => {
         if (alive && stored && isProgressState(stored)) {
           setProgress(normalizeProgress(stored));
         }
+        if (alive) setSyncState(synced ? "synced" : "offline");
       })
       .catch(() => {
         if (alive) {
+          setSyncState("offline");
           setNotice(
-            "El navegador bloqueó el almacenamiento local. Puedes practicar, pero exporta tu avance antes de cerrar.",
+            "No se pudo abrir el almacenamiento local. Exporta tu avance antes de cerrar.",
           );
         }
       })
@@ -366,13 +349,13 @@ export function LearningApp() {
   useEffect(() => {
     if (!hydrated || !currentUser) return;
     const timer = window.setTimeout(() => {
-      setSaved(false);
-      saveProgress(progress, currentUser.id)
-        .then(() => setSaved(true))
+      setSyncState("saving");
+      saveSyncedProgress(progress, currentUser.id)
+        .then((synced) => setSyncState(synced ? "synced" : "offline"))
         .catch(() => {
-          setSaved(false);
+          setSyncState("offline");
           setNotice(
-            "No se pudo guardar automáticamente. Exporta una copia desde Progreso.",
+            "No se pudo guardar localmente. Exporta una copia desde Progreso.",
           );
         });
     }, 280);
@@ -529,13 +512,49 @@ export function LearningApp() {
     setInstallPrompt(null);
   }
 
-  function logout() {
-    clearLocalSession();
+  async function logout() {
+    await clearCloudSession().catch(() => undefined);
     setHydrated(false);
     setCurrentUser(null);
     setProgress(initialProgress);
+    setSyncState("synced");
     setActiveView("today");
     setNotice("");
+  }
+
+  async function deleteAccount() {
+    if (!currentUser) return;
+    const userId = currentUser.id;
+    const accepted = window.confirm(
+      "Se eliminarán definitivamente tu cuenta, perfil y progreso sincronizado. Esta acción no se puede deshacer.",
+    );
+    if (!accepted) return;
+
+    const confirmation = window.prompt(
+      "Para confirmar, escribe ELIMINAR en mayúsculas.",
+    );
+    if (confirmation !== "ELIMINAR") {
+      setNotice("No se eliminó la cuenta: la confirmación no coincidió.");
+      return;
+    }
+
+    setDeletingAccount(true);
+    setHydrated(false);
+    try {
+      await deleteCurrentAccount(userId);
+      setCurrentUser(null);
+      setProgress(initialProgress);
+      setSyncState("synced");
+      setActiveView("today");
+      setNotice("");
+    } catch {
+      setHydrated(true);
+      setNotice(
+        "No se pudo eliminar la cuenta. Revisa tu conexión e inténtalo de nuevo.",
+      );
+    } finally {
+      setDeletingAccount(false);
+    }
   }
 
   function exportProgress() {
@@ -598,7 +617,7 @@ export function LearningApp() {
               para que puedas explicar cada decisión.
             </p>
           </div>
-          <StatusPill saved={saved} />
+          <StatusPill syncState={syncState} />
         </section>
 
         <section className="focus-card">
@@ -756,7 +775,7 @@ export function LearningApp() {
               y decisión de diseño.
             </p>
           </div>
-          <StatusPill saved={saved} />
+          <StatusPill syncState={syncState} />
         </section>
 
         <section className="principles-row" aria-label="Método de aprendizaje">
@@ -838,7 +857,7 @@ export function LearningApp() {
               sin revelar la solución completa.
             </p>
           </div>
-          <StatusPill saved={saved} />
+          <StatusPill syncState={syncState} />
         </section>
 
         <div className="exercise-tabs" role="tablist" aria-label="Retos disponibles">
@@ -967,7 +986,7 @@ export function LearningApp() {
               no memoria de definiciones.
             </p>
           </div>
-          <StatusPill saved={saved} />
+          <StatusPill syncState={syncState} />
         </section>
 
         <section className="interview-layout">
@@ -1057,14 +1076,14 @@ export function LearningApp() {
       <div className="view-stack">
         <section className="page-heading page-heading--compact">
           <div>
-            <span className="eyebrow">PROGRESO LOCAL · TU INFORMACIÓN ES TUYA</span>
+            <span className="eyebrow">PROGRESO SINCRONIZADO · TU INFORMACIÓN ES TUYA</span>
             <h1>Haz visible lo que ya dominas.</h1>
             <p>
-              El avance se guarda en este dispositivo. Descarga una copia para
-              moverlo a otra computadora o conservar un respaldo.
+              El avance se sincroniza con tu cuenta y conserva una copia local
+              para que puedas continuar temporalmente sin conexión.
             </p>
           </div>
-          <StatusPill saved={saved} />
+          <StatusPill syncState={syncState} />
         </section>
 
         <section className="metric-grid">
@@ -1150,6 +1169,22 @@ export function LearningApp() {
               ) : (
                 <p className="empty-state">Completa tu primera actividad y aparecerá aquí.</p>
               )}
+            </article>
+            <article className="section-card data-card account-card">
+              <span className="eyebrow">CUENTA Y PRIVACIDAD</span>
+              <h2>Controla tus datos</h2>
+              <p>
+                Eliminar la cuenta borra definitivamente el perfil y el progreso
+                central de UP Training Center.
+              </p>
+              <button
+                className="danger-button"
+                type="button"
+                disabled={deletingAccount}
+                onClick={() => void deleteAccount()}
+              >
+                {deletingAccount ? "Eliminando cuenta…" : "Eliminar mi cuenta"}
+              </button>
             </article>
           </div>
         </section>
