@@ -2,7 +2,7 @@ import {
   openLocalDatabase,
   PROGRESS_STORE_NAME,
 } from "./localDatabase";
-import { supabase } from "./supabaseClient";
+import { account } from "./appwriteClient";
 
 type LocalProgressEnvelope = {
   progress: unknown;
@@ -82,16 +82,18 @@ async function pushRemoteProgress(
   userId: string,
   envelope: LocalProgressEnvelope,
 ) {
-  if (!supabase) return false;
-  const { error } = await supabase.from("learning_progress").upsert(
-    {
-      user_id: userId,
+  if (!account) return false;
+  const current = await account.get();
+  if (current.$id !== userId) {
+    throw new Error("La sesión activa no pertenece a este progreso.");
+  }
+  await account.updatePrefs({
+    prefs: {
+      progressSchemaVersion: 1,
       progress: envelope.progress,
-      updated_at: envelope.updatedAt,
+      progressUpdatedAt: envelope.updatedAt,
     },
-    { onConflict: "user_id" },
-  );
-  if (error) throw error;
+  });
   await writeLocalProgress(userId, {
     ...envelope,
     pendingSync: false,
@@ -103,25 +105,28 @@ export async function loadSyncedProgress(
   userId: string,
 ): Promise<LoadedProgress> {
   const local = await readLocalProgress(userId);
-  if (!supabase) {
+  if (!account) {
     return { progress: local?.progress ?? null, synced: false };
   }
 
   try {
-    const { data, error } = await supabase
-      .from("learning_progress")
-      .select("progress, updated_at")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (error) throw error;
-
-    const remote = data
-      ? {
-          progress: data.progress,
-          updatedAt: data.updated_at as string,
-          pendingSync: false,
-        }
-      : null;
+    const current = await account.get();
+    if (current.$id !== userId) {
+      throw new Error("La sesión activa no pertenece a este progreso.");
+    }
+    const prefs = await account.getPrefs<{
+      progress?: unknown;
+      progressUpdatedAt?: string;
+      progressSchemaVersion?: number;
+    }>();
+    const remote =
+      "progress" in prefs && typeof prefs.progressUpdatedAt === "string"
+        ? {
+            progress: prefs.progress,
+            updatedAt: prefs.progressUpdatedAt,
+            pendingSync: false,
+          }
+        : null;
 
     if (
       local &&

@@ -47,7 +47,7 @@ next-env.d.ts
 /desktop-dist/
 /desktop/dist/
 /release/
-/UP Training Center.exe
+*.exe
 /.wrangler/
 /outputs/
 /work/

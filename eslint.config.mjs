@@ -17,7 +17,7 @@ const eslintConfig = defineConfig([
     "desktop/dist/**",
     "desktop-dist/**",
     "release/**",
-    "supabase/functions/**",
+    "appwrite/functions/**",
   ]),
 ]);
 
