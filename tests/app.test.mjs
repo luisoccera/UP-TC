@@ -102,6 +102,7 @@ test("includes a portable Windows desktop package", async () => {
   assert.match(desktopMain, /loadURL\(appOrigin\)/);
   assert.match(desktopMain, /contextIsolation:\s*true/);
   assert.match(desktopMain, /nodeIntegration:\s*false/);
+  assert.match(desktopVite, /envDir:\s*"\.\."/);
   assert.match(desktopVite, /outDir:\s*"dist"/);
 });
 
